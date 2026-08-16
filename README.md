@@ -170,7 +170,14 @@ The repository root *is* the site — no build step is invented. The workflow
 `.github/workflows/pages.yml` runs the test suite (Node 20 + 22) and, on pushes to `main`,
 uploads the static tree and deploys via `actions/deploy-pages`. The app uses **hash routing and
 relative asset paths**, so it works at repository subpaths (`https://user.github.io/repo/`)
-without extra configuration. Add `.nojekyll` (included) so Pages serves files verbatim.
+without extra configuration. `.nojekyll` (included) makes Pages serve files verbatim.
+
+> **Setup note:** the workflow file is written and present at `.github/workflows/pages.yml`,
+> but the automation that authored this repository did not have the GitHub `workflows`
+> permission, so the file could not be pushed. A maintainer with workflow permissions should
+> `git add -f .github/workflows/pages.yml`, commit it, and remove the matching lines from
+> `.gitignore`. Until then, enable Pages with “Deploy from a branch” on `main` (whole
+> repository, root) for an equivalent static deploy.
 
 ## Community
 
