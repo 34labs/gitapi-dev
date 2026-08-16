@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+*.log
+
+# GitHub Actions workflow is ready locally but cannot be pushed by the
+# current automation token (missing `workflows` scope). A maintainer with
+# workflow permissions should commit .github/workflows/pages.yml and then
+# remove these ignore lines.
+.github/workflows/

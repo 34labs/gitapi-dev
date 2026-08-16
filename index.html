@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GitAPITaker — inspect the API behind any Git hosting URL</title>
+  <meta name="description" content="Privacy-first, keyboard-driven developer tool that resolves Git hosting URLs (GitHub, GitLab, Gitea) into provider REST API endpoints and inspects the responses directly in your browser. No backend, no proxy, no telemetry.">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./styles/app.css">
+  <meta name="color-scheme" content="dark light">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header">
+    <a class="brand" href="#/">
+      <span class="brand-mark" aria-hidden="true">{}</span>
+      <span class="brand-name">GitAPITaker</span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="#/">Inspector</a>
+      <a href="#/history">History</a>
+      <a href="#/cache">Cache</a>
+      <a href="#/providers">Providers</a>
+      <a href="#/community">Community</a>
+      <a href="#/about">About/Security</a>
+    </nav>
+    <button type="button" id="palette-open" class="btn btn-ghost palette-trigger" aria-label="Open command palette">
+      <kbd>Ctrl</kbd><kbd>K</kbd>
+    </button>
+  </header>
+
+  <main id="main">
+
+    <!-- ============================ Inspector ============================ -->
+    <section id="page-inspector" aria-labelledby="inspector-title">
+      <header class="page-head">
+        <h1 id="inspector-title" tabindex="-1">Inspector</h1>
+        <p class="tagline">Take a Git hosting URL. Inspect the API behind it.</p>
+        <p class="view-note">Requests go directly from your browser to the provider API. No proxy, no backend, no tracking.</p>
+      </header>
+
+      <form id="inspect-form" class="inspect-form" autocomplete="off">
+        <label for="url-input" class="field-label">Git hosting URL</label>
+        <div class="input-row">
+          <input id="url-input" class="input mono" type="text" inputmode="url" spellcheck="false"
+                 placeholder="https://github.com/flessan — or github.com/flessan, or a GitLab/Gitea URL"
+                 aria-describedby="input-help">
+          <button type="submit" class="btn btn-primary" id="inspect-btn">Inspect</button>
+        </div>
+        <p id="input-help" class="view-note">Full URLs, shorthand hosts and git@ SSH remotes are accepted. Enter inspects.</p>
+        <div id="examples" class="examples" role="group" aria-label="Example URLs"></div>
+      </form>
+
+      <div id="empty-state" class="empty-state" hidden>
+        <p class="kaomoji" aria-hidden="true">(・_・;)</p>
+        <p>Nothing inspected yet.</p>
+        <p class="view-note">Paste a Git hosting URL above, or press an example chip. The resolved API endpoint, the real provider response, its headers and the exact request will appear here.</p>
+      </div>
+
+      <div id="resolver-error" class="error-panel" role="alert" hidden></div>
+
+      <section id="result-area" aria-label="Inspection result" hidden>
+        <p id="pending-note" class="pending-note mono" hidden>Contacting the provider directly from your browser…</p>
+        <div id="status-bar" class="status-bar" role="status" aria-label="Request and response status"></div>
+        <p id="guard-note" class="guard-note" role="note" hidden></p>
+        <div id="interp-banner" hidden></div>
+        <div id="response-tabs"></div>
+        <section id="explorer-area" aria-label="Endpoint Explorer" hidden></section>
+      </section>
+    </section>
+
+    <!-- ============================ History ============================ -->
+    <section id="page-history" aria-labelledby="history-title" hidden>
+      <header class="page-head">
+        <h1 id="history-title" tabindex="-1">History</h1>
+        <p class="view-note">Previously inspected resources. Stored in this browser only — never transmitted anywhere. Arrow keys navigate, Enter reopens.</p>
+      </header>
+      <div class="btn-row">
+        <button type="button" id="history-clear" class="btn btn-ghost">Clear history</button>
+      </div>
+      <p id="history-summary" class="view-note" role="status"></p>
+      <div id="history-list" class="history-list"></div>
+    </section>
+
+    <!-- ============================ Cache ============================ -->
+    <section id="page-cache" aria-labelledby="cache-title" hidden>
+      <header class="page-head">
+        <h1 id="cache-title" tabindex="-1">Cache Inspector</h1>
+        <p class="view-note">Everything below lives in your browser’s localStorage. Cached responses keep full JSON / RAW / HEADERS / REQUEST data so they remain inspectable offline. GitAPITaker never presents a cached response as a fresh one.</p>
+      </header>
+      <div class="btn-row">
+        <button type="button" id="cache-clear" class="btn btn-ghost">Clear all cache</button>
+      </div>
+      <p id="cache-summary" class="view-note" role="status"></p>
+      <div id="cache-list"></div>
+    </section>
+
+    <!-- ============================ Providers ============================ -->
+    <section id="page-providers" aria-labelledby="providers-title" hidden>
+      <header class="page-head">
+        <h1 id="providers-title" tabindex="-1">Providers &amp; Documentation</h1>
+        <p class="view-note">GitAPITaker links to official provider documentation and keeps only concise mapping information locally. Capability tables below are rendered from each provider adapter’s metadata.</p>
+      </header>
+      <div id="provider-cards" class="provider-cards"></div>
+      <section id="instance-manager" aria-label="Custom instances"></section>
+      <section aria-labelledby="add-provider-title">
+        <h2 id="add-provider-title">Adding another provider</h2>
+        <p>New providers are added as self-contained adapters: one module in <code class="mono">src/providers/</code>
+        implementing host matching, URL parsing, endpoint resolution and related-resource metadata, registered in
+        <code class="mono">src/providers/registry.js</code>. The full walkthrough — including Forgejo and Bitbucket
+        notes — is in the <a href="https://github.com/34labs/gitapi-dev/blob/main/README.md#adding-a-provider" target="_blank" rel="noopener noreferrer">README</a>.</p>
+      </section>
+    </section>
+
+    <!-- ============================ Community ============================ -->
+    <section id="page-community" aria-labelledby="community-title" hidden>
+      <header class="page-head">
+        <h1 id="community-title" tabindex="-1">Community</h1>
+        <p class="view-note">Community discussions run on <strong>GitHub Discussions</strong> via
+        <a href="https://giscus.app" target="_blank" rel="noopener noreferrer">Giscus</a> — GitAPITaker itself stays
+        a static site with no forum backend. Talk about provider mappings, API behavior differences, bugs, feature
+        requests, unsupported resources, self-hosted compatibility, and new Git hosting platforms.</p>
+      </header>
+      <ul class="note-list">
+        <li>Provider-specific mapping questions: use the “Discuss … mappings” link on each provider card under Providers.</li>
+        <li>Bugs and feature requests: open an issue or discussion on <a href="https://github.com/34labs/gitapi-dev" target="_blank" rel="noopener noreferrer">the repository</a>.</li>
+        <li>Please never paste tokens, private URLs or confidential data into public discussions.</li>
+      </ul>
+      <div id="giscus-mount" class="giscus-mount"></div>
+    </section>
+
+    <!-- ============================ About ============================ -->
+    <section id="page-about" aria-labelledby="about-title" hidden>
+      <header class="page-head">
+        <h1 id="about-title" tabindex="-1">About &amp; Security</h1>
+      </header>
+
+      <div class="prose">
+        <h2>What GitAPITaker is</h2>
+        <p>A privacy-first, keyboard-driven developer tool that resolves Git hosting URLs into their provider REST API
+        endpoints and lets you inspect the resulting responses — JSON, RAW body, headers and the exact request — with
+        total transparency about what is live and what is cached.</p>
+
+        <h2>Architecture</h2>
+        <ul>
+          <li><strong>Static frontend only.</strong> Deployable on GitHub Pages. There is no GitAPITaker backend, API proxy, request relay, telemetry service, analytics system or application-owned database.</li>
+          <li><strong>Direct requests.</strong> Every API call goes from your browser straight to the provider (GitHub, GitLab, Gitea, or a self-hosted instance you register). GitAPITaker never sits in the middle.</li>
+          <li><strong>Provider adapters.</strong> Detection, URL parsing and endpoint resolution are separate stages; each provider adapter owns its own mapping rules, versioning quirks and capability metadata.</li>
+        </ul>
+
+        <h2>Privacy</h2>
+        <ul>
+          <li>No analytics, no telemetry, no tracking pixels, no third-party behavioral tracking, no request-logging servers.</li>
+          <li>The URLs you inspect, your history and your cache are stored only in this browser’s localStorage. GitAPITaker never transmits them anywhere.</li>
+          <li>Share links contain only the target resource URL — never responses, tokens or cache data.</li>
+          <li>Requests use <code class="mono">credentials: "omit"</code>: no cookies are sent to provider APIs.</li>
+          <li>The community widget (Giscus) is loaded only on the Community page and communicates with GitHub, not with GitAPITaker infrastructure.</li>
+        </ul>
+        <p><strong>Important honesty note:</strong> the provider you inspect does receive your request — it is the actual
+        API destination. Provider rate limits, terms and privacy policies apply to those requests.</p>
+
+        <h2>Caching</h2>
+        <p>Responses are cached in localStorage with full context: endpoint, status, headers, exact body, request
+        metadata, fetch time and TTL (5 minutes by default). Cache keys include provider, method and full endpoint URL
+        so unrelated requests never collide. A response is always labeled <strong>LIVE</strong>, <strong>CACHED</strong>
+        or <strong>STALE</strong> — text labels, not color alone. A cached response is never displayed as fresh, and a
+        <code class="mono">200 OK</code> from cache always carries the CACHED/STALE badge and the original fetch time.</p>
+
+        <h2>Request Guard</h2>
+        <p>The Request Guard is a local safety mechanism: after a live request, repeated identical requests within
+        10 seconds are suppressed and served from the local cache. The UI tells you when this happens — how many
+        repeats were suppressed and when a live request is allowed again. It exists to keep the interface responsive
+        and to protect third-party APIs from accidental hammering. <strong>It is not designed to bypass provider rate
+        limits</strong>, and GitAPITaker never rotates identities, proxies requests, or otherwise circumvents provider
+        protections. Provider rate limits still fully apply to every live request.</p>
+
+        <h2>Offline mode</h2>
+        <p>When a provider cannot be reached (or you are offline), previously cached responses remain fully inspectable
+        — all four views work from the cached record. Such responses are always labeled STALE with the original fetch
+        timestamp.</p>
+
+        <h2>Authentication (future)</h2>
+        <p>GitAPITaker v0.1 performs unauthenticated requests only. If authentication is added later, tokens will
+        never be placed in URLs, query parameters, share links, history or cache records; the default will be
+        memory-only storage, and browser-local storage risks will be spelled out before any opt-in persistence.</p>
+
+        <h2>Known limitations</h2>
+        <ul>
+          <li>github.com/{name} is ambiguous (user vs organization); the users endpoint is tried first and the 404 interpretation suggests the org endpoint.</li>
+          <li>GitLab user lookup returns an array (<code class="mono">/users?username=</code>); related resources for a single GitLab user need the numeric id from that response.</li>
+          <li>tree/blob URLs mix a git ref and a path; the first segment is treated as the ref (heuristic, labeled in the REQUEST view).</li>
+          <li>Browsers only expose response headers allowed by CORS; the HEADERS view says so explicitly.</li>
+          <li>Some self-hosted instances disable CORS for their API; browser requests to them will fail and the error interpretation explains this.</li>
+          <li>GitAPITaker performs GET requests only.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p class="mono">GitAPITaker — direct browser-to-provider requests · localStorage cache · no proxy · no telemetry</p>
+    <p class="view-note">Providers: <a href="https://docs.github.com/en/rest" target="_blank" rel="noopener noreferrer">GitHub REST</a> ·
+      <a href="https://docs.gitlab.com/api/rest/" target="_blank" rel="noopener noreferrer">GitLab REST</a> ·
+      <a href="https://docs.gitea.com/api/" target="_blank" rel="noopener noreferrer">Gitea</a></p>
+  </footer>
+
+  <!-- Screen-reader live regions -->
+  <div id="sr-polite" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  <div id="sr-assertive" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- ============================ Command palette ============================ -->
+  <dialog id="palette-dialog" class="palette-dialog" aria-label="Command palette">
+    <div class="palette-box">
+      <input id="palette-input" class="input mono" type="text" placeholder="Type a command…"
+             role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"
+             aria-label="Command palette filter">
+      <div id="palette-list" class="palette-list" role="listbox" aria-label="Commands"></div>
+      <p id="palette-empty" class="empty-note" hidden>No matching commands.</p>
+      <p class="view-note palette-foot">Arrow keys to move · Enter to run · Esc to close</p>
+    </div>
+  </dialog>
+
+  <!-- ============================ Help dialog ============================ -->
+  <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
+    <div class="dialog-box">
+      <header class="dialog-head">
+        <h2 id="help-title">Keyboard shortcuts</h2>
+        <button type="button" class="btn btn-ghost dialog-close" aria-label="Close help">Close</button>
+      </header>
+      <table class="kv-table">
+        <tbody>
+          <tr><th scope="row"><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> <kbd>K</kbd></th><td>Command palette</td></tr>
+          <tr><th scope="row"><kbd>/</kbd></th><td>Focus the URL input</td></tr>
+          <tr><th scope="row"><kbd>Enter</kbd></th><td>Inspect (while in the URL input)</td></tr>
+          <tr><th scope="row"><kbd>1</kbd>–<kbd>4</kbd></th><td>Switch JSON / RAW / HEADERS / REQUEST</td></tr>
+          <tr><th scope="row"><kbd>r</kbd></th><td>Force live request (bypasses the Request Guard)</td></tr>
+          <tr><th scope="row"><kbd>y</kbd></th><td>Copy as cURL</td></tr>
+          <tr><th scope="row"><kbd>s</kbd></th><td>Copy share link</td></tr>
+          <tr><th scope="row"><kbd>d</kbd></th><td>Response diff against an older snapshot</td></tr>
+          <tr><th scope="row"><kbd>?</kbd></th><td>This help dialog</td></tr>
+          <tr><th scope="row"><kbd>Esc</kbd></th><td>Close dialogs / palette</td></tr>
+          <tr><th scope="row"><kbd>↑</kbd>/<kbd>↓</kbd></th><td>Navigate lists, palette and explorer</td></tr>
+          <tr><th scope="row"><kbd>←</kbd>/<kbd>→</kbd></th><td>Switch response tabs (focus on tablist)</td></tr>
+        </tbody>
+      </table>
+      <p class="view-note">Shortcuts are ignored while typing in an input field, and never trap focus.</p>
+    </div>
+  </dialog>
+
+  <!-- ============================ Diff dialog ============================ -->
+  <dialog id="diff-dialog" class="diff-dialog" aria-labelledby="diff-title">
+    <div class="dialog-box dialog-box-wide">
+      <header class="dialog-head">
+        <h2 id="diff-title">Response diff</h2>
+        <button type="button" class="btn btn-ghost" id="diff-close" aria-label="Close diff dialog">Close</button>
+      </header>
+      <div id="diff-body"></div>
+    </div>
+  </dialog>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
