@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GitAPITaker — inspect the API behind any Git hosting URL</title>
+  <meta name="description" content="Privacy-first, keyboard-driven developer tool that resolves Git hosting URLs (GitHub, GitLab, Gitea) into provider REST API endpoints and inspects the responses directly in your browser. No backend, no proxy, no telemetry.">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./styles/app.css">
+  <meta name="color-scheme" content="dark light">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="app-shell">
+
+    <!-- M3 navigation rail (desktop) -->
+    <aside class="nav-rail" aria-label="Main navigation">
+      <a class="brand" href="#/" aria-label="GitAPITaker home">
+        <span class="brand-mark" aria-hidden="true">{}</span>
+      </a>
+      <nav class="site-nav">
+        <a href="#/" data-nav="inspector">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20.5 20.5 16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+          <span class="nav-label">Inspect</span>
+        </a>
+        <a href="#/history" data-nav="history">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="nav-label">History</span>
+        </a>
+        <a href="#/cache" data-nav="cache">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7" ry="2.8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 5.5v13c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-13" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 12c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8" fill="none" stroke="currentColor" stroke-width="2"/></svg></span>
+          <span class="nav-label">Cache</span>
+        </a>
+        <a href="#/providers" data-nav="providers">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6" fill="currentColor"/><circle cx="12" cy="4.5" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="19.5" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="19.5" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="4.5" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6.5V9.4M14.6 12h2.9M12 14.6v2.9M9.4 12H6.5" stroke="currentColor" stroke-width="2"/></svg></span>
+          <span class="nav-label">Providers</span>
+        </a>
+        <a href="#/community" data-nav="community">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4.2 3.6a.6.6 0 0 1-1-.46z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></span>
+          <span class="nav-label">Community</span>
+        </a>
+        <a href="#/about" data-nav="about">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.8" r="1.2" fill="currentColor"/></svg></span>
+          <span class="nav-label">About</span>
+        </a>
+      </nav>
+      <span class="rail-spacer"></span>
+      <span class="rail-version mono" aria-hidden="true">v0.3</span>
+    </aside>
+
+    <div class="app-content">
+      <!-- M3 top app bar -->
+      <header class="app-bar">
+        <div class="app-bar-title">
+          <span class="brand-inline">GitAPITaker</span>
+          <span class="app-bar-sub">Git hosting API inspector</span>
+        </div>
+        <div class="app-bar-actions">
+          <button type="button" id="theme-toggle" class="m3-btn text btn-theme" aria-label="Cycle color theme (auto, dark, light)">
+            <span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M18.7 5.3 17 7M7 17l-1.7 1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+            <span class="theme-label">Auto</span>
+          </button>
+          <button type="button" id="palette-open" class="m3-btn outlined" aria-label="Open command palette">
+            <kbd>Ctrl</kbd><kbd>K</kbd>
+          </button>
+        </div>
+      </header>
+
+      <main id="main">
+
+        <!-- ============================ Inspector ============================ -->
+        <section id="page-inspector" aria-labelledby="inspector-title">
+          <header class="page-head">
+            <h1 id="inspector-title" tabindex="-1">Inspector</h1>
+            <p class="page-sub">Take a Git hosting URL. Inspect the API behind it.</p>
+          </header>
+
+          <div class="card elevated inspect-card">
+            <form id="inspect-form" autocomplete="off">
+              <div class="field-row">
+                <div class="m3-field">
+                  <span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-5.6-5.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+                  <label for="url-input" class="sr-only">Git hosting URL</label>
+                  <input id="url-input" type="text" inputmode="url" spellcheck="false"
+                         placeholder="Paste a Git hosting URL — e.g. https://github.com/flessan"
+                         aria-describedby="input-help">
+                </div>
+                <button type="submit" class="m3-btn filled" id="inspect-btn">Inspect</button>
+              </div>
+              <p id="input-help" class="helper-text">Full URLs, shorthand like github.com/flessan, and git@ SSH remotes all work. Press Enter to inspect, or / to focus this field.</p>
+              <div class="try-row">
+                <span class="try-label">Try:</span>
+                <div id="examples" class="examples" role="group" aria-label="Example URLs"></div>
+              </div>
+            </form>
+          </div>
+
+          <div id="pipeline" class="pipeline" role="status" aria-label="Resolution pipeline" hidden></div>
+
+          <div id="empty-state" class="card outlined empty-state" hidden>
+            <span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M20 20l-5.6-5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M7.5 9.2h5M7.5 11.8h3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+            <p class="empty-title">Nothing inspected yet</p>
+            <p class="empty-body">Paste a Git hosting URL above or pick an example. You’ll see each resolution step, the real provider response, its headers and the exact request — nothing is faked.</p>
+          </div>
+
+          <div id="resolver-error" class="card error-card" role="alert" hidden></div>
+
+          <section id="result-area" aria-label="Inspection result" hidden>
+            <div class="inspector-grid">
+              <aside id="status-bar" class="card elevated meta-card" aria-label="Request and response status"></aside>
+              <div class="response-main">
+                <p id="pending-note" class="pending-note" hidden>Contacting the provider directly from your browser…</p>
+                <div id="interp-banner" hidden></div>
+                <div id="change-note" class="change-note" role="status" hidden></div>
+                <div id="pagination-bar" class="pagination-bar card outlined" hidden></div>
+                <div id="response-tabs"></div>
+                <section id="explorer-area" class="explorer-area" aria-label="Endpoint Explorer" hidden></section>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <!-- ============================ History ============================ -->
+        <section id="page-history" aria-labelledby="history-title" hidden>
+          <header class="page-head">
+            <h1 id="history-title" tabindex="-1">History</h1>
+            <p class="page-sub">Previously inspected resources — stored in this browser only, never transmitted.</p>
+          </header>
+          <div class="page-toolbar">
+            <button type="button" id="history-clear" class="m3-btn outlined">Clear history</button>
+            <p id="history-summary" class="helper-text" role="status"></p>
+          </div>
+          <div id="history-list" class="history-list"></div>
+        </section>
+
+        <!-- ============================ Cache ============================ -->
+        <section id="page-cache" aria-labelledby="cache-title" hidden>
+          <header class="page-head">
+            <h1 id="cache-title" tabindex="-1">Cache Inspector</h1>
+            <p class="page-sub">Everything below lives in your browser’s localStorage. Cached responses keep all four views and stay inspectable offline. Cached is always labeled cached — never shown as fresh.</p>
+          </header>
+          <div class="page-toolbar">
+            <button type="button" id="cache-clear" class="m3-btn outlined">Clear all cache</button>
+            <p id="cache-summary" class="helper-text" role="status"></p>
+          </div>
+          <div id="cache-list"></div>
+        </section>
+
+        <!-- ============================ Providers ============================ -->
+        <section id="page-providers" aria-labelledby="providers-title" hidden>
+          <header class="page-head">
+            <h1 id="providers-title" tabindex="-1">Providers &amp; Documentation</h1>
+            <p class="page-sub">Official documentation links plus concise mapping tables rendered from each provider adapter’s metadata.</p>
+          </header>
+          <div id="provider-cards" class="provider-cards"></div>
+          <section id="instance-manager" aria-label="Custom instances"></section>
+          <section aria-labelledby="add-provider-title">
+            <h2 id="add-provider-title" class="section-title">Adding another provider</h2>
+            <p>New providers are added as self-contained adapters: one module in <code>src/providers/</code>
+            implementing host matching, URL parsing, endpoint resolution and related-resource metadata, registered in
+            <code>src/providers/registry.js</code>. The full walkthrough — including Forgejo and Bitbucket
+            notes — is in the <a href="https://github.com/34labs/gitapi-dev/blob/main/README.md#adding-a-provider" target="_blank" rel="noopener noreferrer">README</a>.</p>
+          </section>
+        </section>
+
+        <!-- ============================ Community ============================ -->
+        <section id="page-community" aria-labelledby="community-title" hidden>
+          <header class="page-head">
+            <h1 id="community-title" tabindex="-1">Community</h1>
+            <p class="page-sub">Community discussions run on <strong>GitHub Discussions</strong> via
+            <a href="https://giscus.app" target="_blank" rel="noopener noreferrer">Giscus</a> — GitAPITaker stays a
+            static site with no forum backend. Talk about provider mappings, API behavior differences, bugs, feature
+            requests, unsupported resources, self-hosted compatibility, and new Git hosting platforms.</p>
+          </header>
+          <ul class="note-list">
+            <li>Provider-specific mapping questions: use the “Discuss … mappings” link on each provider card under Providers.</li>
+            <li>Bugs and feature requests: open an issue or discussion on <a href="https://github.com/34labs/gitapi-dev" target="_blank" rel="noopener noreferrer">the repository</a>.</li>
+            <li>Please never paste tokens, private URLs or confidential data into public discussions.</li>
+          </ul>
+          <div id="giscus-mount" class="giscus-mount"></div>
+        </section>
+
+        <!-- ============================ About ============================ -->
+        <section id="page-about" aria-labelledby="about-title" hidden>
+          <header class="page-head">
+            <h1 id="about-title" tabindex="-1">About &amp; Security</h1>
+          </header>
+
+          <div class="prose">
+            <h2>What GitAPITaker is</h2>
+            <p>A privacy-first, keyboard-driven developer tool that resolves Git hosting URLs into their provider REST API
+            endpoints and lets you inspect the resulting responses — JSON, RAW body, headers and the exact request — with
+            total transparency about what is live and what is cached. The resolution pipeline at the top of every
+            inspection shows exactly what was detected, parsed, resolved and fetched.</p>
+
+            <h2>Architecture</h2>
+            <ul>
+              <li><strong>Static frontend only.</strong> Deployable on GitHub Pages. There is no GitAPITaker backend, API proxy, request relay, telemetry service, analytics system or application-owned database.</li>
+              <li><strong>Direct requests.</strong> Every API call goes from your browser straight to the provider (GitHub, GitLab, Gitea, or a self-hosted instance you register). GitAPITaker never sits in the middle.</li>
+              <li><strong>Provider adapters.</strong> Detection, URL parsing and endpoint resolution are separate stages; each provider adapter owns its own mapping rules, versioning quirks and capability metadata.</li>
+            </ul>
+
+            <h2>Privacy</h2>
+            <ul>
+              <li>No analytics, no telemetry, no tracking pixels, no third-party behavioral tracking, no request-logging servers. No web fonts are loaded — system font stacks only.</li>
+              <li>The URLs you inspect, your history, your cache, your theme preference and your settings are stored only in this browser’s localStorage. GitAPITaker never transmits them anywhere.</li>
+              <li>Share links contain only the target resource URL — never responses, tokens or cache data.</li>
+              <li>Requests use <code>credentials: "omit"</code>: no cookies are sent to provider APIs.</li>
+              <li>The community widget (Giscus) is loaded only on the Community page and communicates with GitHub, not with GitAPITaker infrastructure.</li>
+            </ul>
+            <p><strong>Important honesty note:</strong> the provider you inspect does receive your request — it is the actual
+            API destination. Provider rate limits, terms and privacy policies apply to those requests.</p>
+
+            <h2>Caching</h2>
+            <p>Responses are cached in localStorage with full context: endpoint, status, headers, exact body, request
+            metadata, fetch time and TTL (5 minutes by default). Cache keys include provider, method and full endpoint URL
+            so unrelated requests never collide. A response is always labeled <strong>LIVE</strong>, <strong>CACHED</strong>
+            or <strong>STALE</strong> — text labels, not color alone. A cached response is never displayed as fresh, and a
+            <code>200 OK</code> from cache always carries the CACHED/STALE badge and the original fetch time.</p>
+
+            <h2>Request Guard</h2>
+            <p>The Request Guard is a local safety mechanism: after a live request, repeated identical requests within
+            10 seconds are suppressed and served from the local cache. The UI tells you when this happens — how many
+            repeats were suppressed this session, and when a live request is allowed again. <code>r</code>
+            (or the Refresh button) forces a live request. It exists to keep the interface responsive and to protect
+            third-party APIs from accidental hammering. <strong>It is not designed to bypass provider rate
+            limits</strong>, and GitAPITaker never rotates identities, proxies requests, or otherwise circumvents provider
+            protections. Provider rate limits still fully apply to every live request.</p>
+
+            <h2>Offline mode</h2>
+            <p>When a provider cannot be reached (or you are offline), previously cached responses remain fully inspectable
+            — all four views work from the cached record. Such responses are always labeled STALE with the original fetch
+            timestamp.</p>
+
+            <h2>Authentication (future)</h2>
+            <p>GitAPITaker v0.1 performs unauthenticated requests only. If authentication is added later, tokens will
+            never be placed in URLs, query parameters, share links, history or cache records; the default will be
+            memory-only storage, and browser-local storage risks will be spelled out before any opt-in persistence.</p>
+
+            <h2>Known limitations</h2>
+            <ul>
+              <li>github.com/{name} is ambiguous (user vs organization); the users endpoint is tried first and the 404 interpretation offers a one-click “try as organization” action.</li>
+              <li>GitLab user lookup returns an array (<code>/users?username=</code>); related resources for a single GitLab user need the numeric id from that response.</li>
+              <li>tree/blob URLs mix a git ref and a path; the first segment is treated as the ref (heuristic, labeled in the REQUEST view).</li>
+              <li>Browsers only expose response headers allowed by CORS; the HEADERS view says so explicitly.</li>
+              <li>Some self-hosted instances disable CORS for their API; browser requests to them will fail and the error interpretation explains this.</li>
+              <li>GitAPITaker performs GET requests only.</li>
+            </ul>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- M3 bottom navigation (mobile) -->
+  <nav class="bottom-nav" aria-label="Main navigation (mobile)">
+    <a href="#/" data-nav="inspector">
+      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20.5 20.5 16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+      <span class="nav-label">Inspect</span>
+    </a>
+    <a href="#/history" data-nav="history">
+      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="nav-label">History</span>
+    </a>
+    <a href="#/cache" data-nav="cache">
+      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7" ry="2.8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 5.5v13c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-13" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 12c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8" fill="none" stroke="currentColor" stroke-width="2"/></svg></span>
+      <span class="nav-label">Cache</span>
+    </a>
+    <a href="#/providers" data-nav="providers">
+      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6" fill="currentColor"/><circle cx="12" cy="4.5" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="19.5" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="19.5" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="4.5" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6.5V9.4M14.6 12h2.9M12 14.6v2.9M9.4 12H6.5" stroke="currentColor" stroke-width="2"/></svg></span>
+      <span class="nav-label">Providers</span>
+    </a>
+    <a href="#/community" data-nav="community">
+      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4.2 3.6a.6.6 0 0 1-1-.46z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></span>
+      <span class="nav-label">Community</span>
+    </a>
+    <a href="#/about" data-nav="about">
+      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.8" r="1.2" fill="currentColor"/></svg></span>
+      <span class="nav-label">About</span>
+    </a>
+  </nav>
+
+  <!-- M3 snackbar -->
+  <div id="snackbar" class="snackbar" aria-live="polite" hidden></div>
+
+  <!-- Screen-reader live regions -->
+  <div id="sr-polite" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  <div id="sr-assertive" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- ============================ Command palette ============================ -->
+  <dialog id="palette-dialog" class="m3-dialog palette-dialog" aria-label="Command palette">
+    <div class="palette-box">
+      <input id="palette-input" class="palette-input" type="text" placeholder="Search commands…"
+             role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"
+             aria-label="Command palette filter">
+      <div id="palette-list" class="palette-list" role="listbox" aria-label="Commands"></div>
+      <p id="palette-empty" class="empty-note" hidden>No matching commands.</p>
+      <p class="helper-text palette-foot">Up/Down to move · Enter to run · Esc to close</p>
+    </div>
+  </dialog>
+
+  <!-- ============================ Help dialog ============================ -->
+  <dialog id="help-dialog" class="m3-dialog help-dialog" aria-labelledby="help-title">
+    <div class="dialog-box">
+      <header class="dialog-head">
+        <h2 id="help-title">Keyboard shortcuts</h2>
+        <button type="button" class="m3-btn text dialog-close" aria-label="Close help">Close</button>
+      </header>
+      <table class="help-table">
+        <tbody>
+          <tr><th scope="row"><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> <kbd>K</kbd></th><td>Command palette</td></tr>
+          <tr><th scope="row"><kbd>/</kbd></th><td>Focus the URL input</td></tr>
+          <tr><th scope="row"><kbd>Enter</kbd></th><td>Inspect (while in the URL input)</td></tr>
+          <tr><th scope="row"><kbd>1</kbd>–<kbd>4</kbd></th><td>Switch JSON / RAW / HEADERS / REQUEST</td></tr>
+          <tr><th scope="row"><kbd>r</kbd></th><td>Force live request (bypasses the Request Guard)</td></tr>
+          <tr><th scope="row"><kbd>y</kbd></th><td>Copy as cURL</td></tr>
+          <tr><th scope="row"><kbd>s</kbd></th><td>Copy share link</td></tr>
+          <tr><th scope="row"><kbd>d</kbd></th><td>Response diff against an older snapshot</td></tr>
+          <tr><th scope="row"><kbd>t</kbd></th><td>Cycle color theme (auto / dark / light)</td></tr>
+          <tr><th scope="row"><kbd>?</kbd></th><td>This help dialog</td></tr>
+          <tr><th scope="row"><kbd>Esc</kbd></th><td>Close dialogs / palette</td></tr>
+          <tr><th scope="row"><kbd>↑</kbd>/<kbd>↓</kbd></th><td>Navigate lists, palette and explorer</td></tr>
+          <tr><th scope="row"><kbd>←</kbd>/<kbd>→</kbd></th><td>Switch response tabs (focus on tablist)</td></tr>
+        </tbody>
+      </table>
+      <p class="helper-text">In the JSON view: type in the filter box to search keys and values (matches auto-expand); click a key to copy its path, click a value to copy it. Shortcuts are ignored while typing and never trap focus.</p>
+    </div>
+  </dialog>
+
+  <!-- ============================ Diff dialog ============================ -->
+  <dialog id="diff-dialog" class="m3-dialog diff-dialog" aria-labelledby="diff-title">
+    <div class="dialog-box dialog-box-wide">
+      <header class="dialog-head">
+        <h2 id="diff-title">Response diff</h2>
+        <button type="button" class="m3-btn text" id="diff-close" aria-label="Close diff dialog">Close</button>
+      </header>
+      <div id="diff-body"></div>
+    </div>
+  </dialog>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

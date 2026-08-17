@@ -1,0 +1,16 @@
+{
+  "id": 63291,
+  "description": "A sample GitLab project fixture",
+  "name": "gitlab",
+  "name_with_namespace": "GitLab.org / gitlab",
+  "path": "gitlab",
+  "path_with_namespace": "gitlab-org/gitlab",
+  "default_branch": "master",
+  "visibility": "public",
+  "ssh_url_to_repo": "git@gitlab.com:gitlab-org/gitlab.git",
+  "http_url_to_repo": "https://gitlab.com/gitlab-org/gitlab.git",
+  "web_url": "https://gitlab.com/gitlab-org/gitlab",
+  "star_count": 3300,
+  "forks_count": 6200,
+  "open_issues_count": 24500
+}

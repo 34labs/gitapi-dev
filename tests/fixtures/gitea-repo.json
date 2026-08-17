@@ -1,0 +1,17 @@
+{
+  "id": 62,
+  "owner": { "id": 1, "login": "gitea", "full_name": "", "avatar_url": "https://gitea.com/avatars/1" },
+  "name": "gitea",
+  "full_name": "gitea/gitea",
+  "description": "Git with a cup of tea",
+  "empty": false,
+  "private": false,
+  "fork": false,
+  "html_url": "https://gitea.com/gitea/gitea",
+  "clone_url": "https://gitea.com/gitea/gitea.git",
+  "default_branch": "main",
+  "stars_count": 250,
+  "forks_count": 60,
+  "open_issues_count": 12,
+  "open_pr_counter": 3
+}
