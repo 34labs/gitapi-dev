@@ -29,6 +29,7 @@ import { createPalette } from './ui/palette.js';
 import { createHelp } from './ui/help.js';
 import { rovingList } from './ui/keyboard.js';
 import { getTheme, setTheme, nextTheme, applyTheme } from './ui/theme.js';
+import { showSnackbar } from './ui/snackbar.js';
 import {
   initInspector, focusInput, getInputValue, setInputValue,
   showPending, showResult, showResolverError, showEmptyState, showNetworkError,
@@ -336,7 +337,7 @@ function openDiff() {
   const list = el('div', { className: 'diff-snapshots' });
   choices.forEach((snap, i) => {
     const btn = el('button', {
-      type: 'button', role: 'radio', className: 'btn btn-ghost btn-sm',
+      type: 'button', role: 'radio', className: 'm3-btn outlined btn-sm',
       'aria-checked': String(i === 0), tabindex: i === 0 ? '0' : '-1',
       'aria-label': `Older response fetched ${formatTimestamp(snap.fetchedAt)}, HTTP ${snap.status}`,
     }, `Older · ${formatTimestamp(snap.fetchedAt)} · HTTP ${snap.status}`);
@@ -383,7 +384,7 @@ function openDiff() {
     for (const f of findings.slice(0, 200)) {
       tbody.append(el('tr', {},
         el('td', { className: 'mono' }, f.path),
-        el('td', {}, el('span', { className: `chip chip-muted diff-${f.type}` }, f.type)),
+        el('td', {}, el('span', { className: `m3-chip diff-${f.type}` }, f.type)),
         el('td', { className: 'mono' }, f.type === 'added' ? '—' : String(JSON.stringify(f.before))),
         el('td', { className: 'mono' }, f.type === 'removed' ? '—' : String(JSON.stringify(f.after))),
       ));
@@ -418,10 +419,8 @@ function showPage(page, inspectTarget = null) {
   for (const [name, id] of Object.entries(PAGE_SECTIONS)) {
     document.getElementById(id).hidden = name !== page;
   }
-  document.querySelectorAll('.site-nav a').forEach((link) => {
-    const href = link.getAttribute('href') || '';
-    const linkPage = href === '#/' ? 'inspector' : href.replace('#/', '');
-    if (linkPage === page) link.setAttribute('aria-current', 'page');
+  document.querySelectorAll('[data-nav]').forEach((link) => {
+    if (link.dataset.nav === page) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   });
 
@@ -485,12 +484,14 @@ async function copyBody() {
   const entry = current ? readEntry(current.cacheKey) : null;
   if (!entry) { announce('Nothing to copy yet — inspect a URL first.'); return; }
   const ok = await copyText(entry.bodyText);
+  showSnackbar(ok ? 'Response body copied' : 'Copy failed');
   announce(ok ? 'Response body copied.' : 'Copy failed.');
 }
 
 async function copyCurl() {
   if (!current) { announce('Nothing to copy yet — inspect a URL first.'); return; }
   const ok = await copyText(buildCurlCommand(current.endpoint));
+  showSnackbar(ok ? 'cURL copied — no credentials included' : 'Copy failed');
   announce(ok ? 'cURL command copied. It contains no credentials.' : 'Copy failed.');
 }
 
@@ -498,6 +499,7 @@ async function copyShare() {
   const target = current?.webUrl ?? current?.endpoint?.url ?? getInputValue();
   if (!target) { announce('Nothing to share yet — inspect a URL first.'); return; }
   const ok = await copyText(buildShareUrl(target));
+  showSnackbar(ok ? 'Share link copied — target URL only' : 'Copy failed');
   announce(ok ? 'Share link copied. It contains only the target URL, never the response.' : 'Copy failed.');
 }
 
@@ -519,15 +521,17 @@ function historyClear() {
 
 function updateThemeButton() {
   const btn = document.getElementById('theme-toggle');
-  if (!btn) return;
-  btn.textContent = `theme: ${getTheme()}`;
+  const label = btn?.querySelector('.theme-label');
+  if (label) label.textContent = getTheme();
 }
 
 function cycleTheme() {
   const next = nextTheme(getTheme());
   setTheme(next);
   updateThemeButton();
-  announce(`Color theme set to ${next === 'auto' ? 'auto (follow system)' : next}.`);
+  const word = next === 'auto' ? 'auto (follow system)' : next;
+  showSnackbar(`Theme: ${word}`);
+  announce(`Color theme set to ${word}.`);
 }
 
 /* ------------------------------------------------------------------ */

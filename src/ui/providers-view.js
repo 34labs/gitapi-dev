@@ -26,7 +26,7 @@ function renderProviderCard(provider) {
   const card = el('article', { className: 'provider-card', 'aria-labelledby': `provider-${provider.id}-title` },
     el('header', { className: 'provider-card-head' },
       el('h2', { id: `provider-${provider.id}-title` }, provider.name),
-      el('a', { href: provider.docsUrl, target: '_blank', rel: 'noopener noreferrer', className: 'btn btn-ghost btn-sm' }, 'Official API docs'),
+      el('a', { href: provider.docsUrl, target: '_blank', rel: 'noopener noreferrer', className: 'm3-btn outlined btn-sm' }, 'Official API docs'),
     ),
     el('dl', { className: 'kv-list' },
       el('dt', {}, 'Default web host'), el('dd', { className: 'mono' }, provider.defaultWebBase),
@@ -96,8 +96,8 @@ function renderInstanceManager(mount) {
     el('p', { id: 'inst-help', className: 'view-note' },
       'Instances are stored in this browser only. The API base defaults to {instance}/api/v1 (Gitea/Forgejo) or {instance}/api/v4 (GitLab); override it only if your deployment differs.'),
     el('div', { className: 'btn-row' },
-      el('button', { type: 'submit', className: 'btn btn-primary' }, 'Add instance'),
-      el('button', { type: 'button', className: 'btn btn-ghost', id: 'inst-probe' }, 'Add + verify'),
+      el('button', { type: 'submit', className: 'm3-btn filled' }, 'Add instance'),
+      el('button', { type: 'button', className: 'm3-btn outlined', id: 'inst-probe' }, 'Add + verify'),
     ),
     el('p', { id: 'inst-result', className: 'view-note', role: 'status' }),
   );
@@ -152,11 +152,11 @@ function renderInstanceList(mount) {
   const list = el('ul', { className: 'instance-list' });
   for (const inst of instances) {
     const row = el('li', { className: 'instance-row' },
-      el('span', { className: 'chip chip-provider' }, inst.kind),
+      el('span', { className: 'm3-chip chip-provider' }, inst.kind),
       el('strong', {}, inst.label),
       el('code', { className: 'mono' }, inst.webBase),
       el('span', { className: 'view-note' }, `API: ${inst.apiBase}`),
-      el('button', { type: 'button', className: 'btn btn-ghost btn-sm btn-danger', 'aria-label': `Remove instance ${inst.label}` }, 'Remove'),
+      el('button', { type: 'button', className: 'm3-btn text btn-sm btn-danger', 'aria-label': `Remove instance ${inst.label}` }, 'Remove'),
     );
     row.querySelector('button').addEventListener('click', () => {
       removeInstance(inst.id);

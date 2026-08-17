@@ -1,6 +1,6 @@
 {
   "name": "gitapitaker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "GitAPITaker — a privacy-first, keyboard-driven static tool that resolves Git hosting URLs into provider REST API endpoints and inspects the responses directly in the browser.",

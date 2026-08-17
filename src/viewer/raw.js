@@ -27,7 +27,7 @@ export function renderRawView(bodyText, meta = {}) {
 
   const pre = el('pre', { className: 'raw-body', tabindex: '0', 'aria-label': 'Raw response body' }, bodyText);
   const copy = el('button', {
-    type: 'button', className: 'btn btn-ghost btn-sm',
+    type: 'button', className: 'm3-btn tonal btn-sm',
     onClick: async (e) => {
       const ok = await copyText(bodyText);
       e.target.textContent = ok ? 'Copied' : 'Copy failed';

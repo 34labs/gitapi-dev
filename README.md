@@ -20,6 +20,22 @@ Every stage is an independent, testable module — and in v0.2 the UI shows them
 the **resolution pipeline** (`DETECT → PARSE → RESOLVE → FETCH`) renders the actual outcome of each
 stage for every inspection, including which stage failed and why.
 
+## What's new in v0.3 (Material You 3 redesign)
+
+The interface was rebuilt around **Material Design 3 (Material You)** patterns for a simpler,
+friendlier, easier-to-digest experience — implemented in pure CSS with the official M3 baseline
+tonal palette. No component libraries, no CDN requests, no web fonts: the privacy model is
+untouched.
+
+- **Navigation rail** with icons on desktop, **bottom navigation** on mobile.
+- **M3 components**: filled/tonal/outlined/text buttons (pill-shaped with state layers),
+  elevated/outlined cards, chips, filled text field, primary tabs, rounded dialogs, and a
+  snackbar for copy/theme feedback.
+- **Simplified hierarchy**: one inspect card up top, pipeline as colored step chips, a status
+  card beside the response, generous spacing and the M3 type scale.
+- Everything from v0.2 remains: pipeline tracker, pagination, JSON search & path copy, quick
+  actions, change detection, diff, guard transparency, themes, shortcuts.
+
 ## What's new in v0.2 (UI/UX redesign + new features)
 
 **Redesign — “lab instrument” identity.** A terminal-style command strip with prompt glyph, a

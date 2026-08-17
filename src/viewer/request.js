@@ -61,7 +61,7 @@ export function renderRequestView(endpoint, meta = {}) {
     el('h3', { className: 'view-subhead' }, 'Copy as cURL'),
     el('pre', { className: 'raw-body raw-body-sm', tabindex: '0', 'aria-label': 'cURL command' }, curl),
     el('button', {
-      type: 'button', className: 'btn btn-ghost btn-sm',
+      type: 'button', className: 'm3-btn tonal btn-sm',
       onClick: async (e) => {
         const ok = await copyText(curl);
         e.target.textContent = ok ? 'Copied' : 'Copy failed';

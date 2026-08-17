@@ -10,6 +10,7 @@
 
 import { el, clear, copyText } from '../ui/dom.js';
 import { announce } from '../ui/announce.js';
+import { showSnackbar } from '../ui/snackbar.js';
 import { findMatches, subtreeHasMatch } from '../core/jsonsearch.js';
 
 const DEFAULT_EXPAND_DEPTH = 2;
@@ -35,8 +36,8 @@ export function renderJsonTree(value, opts = {}) {
   const toolbar = el('div', { className: 'json-toolbar', role: 'group', 'aria-label': 'JSON tree controls' },
     searchInput, matchInfo,
     el('span', { className: 'json-toolbar-spacer' }),
-    el('button', { type: 'button', className: 'btn btn-ghost btn-sm', onClick: () => setAll(treeMount, true) }, 'Expand all'),
-    el('button', { type: 'button', className: 'btn btn-ghost btn-sm', onClick: () => setAll(treeMount, false) }, 'Collapse all'),
+    el('button', { type: 'button', className: 'm3-btn text btn-sm', onClick: () => setAll(treeMount, true) }, 'Expand all'),
+    el('button', { type: 'button', className: 'm3-btn text btn-sm', onClick: () => setAll(treeMount, false) }, 'Collapse all'),
   );
 
   let debounceTimer;
@@ -66,6 +67,7 @@ export function renderJsonTree(value, opts = {}) {
   /** @param {HTMLElement} node @param {string} what */
   async function copyAndAnnounce(text, what) {
     const ok = await copyText(text);
+    showSnackbar(ok ? `Copied ${what}` : 'Copy failed');
     announce(ok ? `Copied ${what}.` : 'Copy failed.', {});
   }
 

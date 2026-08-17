@@ -24,6 +24,7 @@ import { renderExplorer } from './explorer.js';
 import { buildShareUrl } from '../core/share.js';
 import { buildCurlCommand } from '../core/curl.js';
 import { describePagination } from '../core/pagination.js';
+import { showSnackbar } from './snackbar.js';
 
 const EXAMPLES = [
   'https://github.com/flessan',
@@ -206,17 +207,19 @@ function renderMetaRail({ endpoint, providerName, data, state, meta }) {
     railButton('Share', 'Copy a shareable inspection link (target URL only, never the response)', async () => {
       const target = meta.webUrl ?? endpoint.url;
       const ok = await copyText(buildShareUrl(target));
+      showSnackbar(ok ? 'Share link copied — target URL only' : 'Copy failed');
       announce(ok ? 'Share link copied. It contains only the target URL, never the response.' : 'Copy failed.');
     }),
     railButton('cURL', 'Copy this request as a cURL command', async () => {
       const ok = await copyText(buildCurlCommand(endpoint));
+      showSnackbar(ok ? 'cURL copied — no credentials included' : 'Copy failed');
       announce(ok ? 'cURL command copied. It contains no credentials.' : 'Copy failed.');
     }),
   ));
 }
 
 function railButton(text, label, onClick) {
-  const btn = el('button', { type: 'button', className: 'btn btn-ghost btn-sm', title: label, 'aria-label': label }, text);
+  const btn = el('button', { type: 'button', className: 'm3-btn tonal btn-sm', title: label, 'aria-label': label }, text);
   btn.addEventListener('click', () => onClick());
   return btn;
 }
@@ -249,7 +252,7 @@ function renderInterpretation({ data, meta, endpoint }) {
 
 function quickActionButtons(actions) {
   return actions.map((a) => {
-    const btn = el('button', { type: 'button', className: 'btn btn-ghost btn-sm' }, a.label);
+    const btn = el('button', { type: 'button', className: 'm3-btn outlined btn-sm' }, a.label);
     btn.addEventListener('click', () => {
       if (a.input) document.dispatchEvent(new CustomEvent('gitapitaker:inspect', { detail: { input: a.input } }));
       if (a.goto) document.dispatchEvent(new CustomEvent('gitapitaker:goto', { detail: { page: a.goto } }));
@@ -266,7 +269,7 @@ function renderChangeNote(changeNote) {
   const text = changeNote.findings >= 0
     ? `This response changed since the previous capture — ${changeNote.findings} structural difference${changeNote.findings === 1 ? '' : 's'} detected.`
     : 'This response body changed since the previous capture (non-JSON bodies cannot be diffed structurally — compare RAW).';
-  const diffBtn = el('button', { type: 'button', className: 'btn btn-ghost btn-sm' }, 'View diff');
+  const diffBtn = el('button', { type: 'button', className: 'm3-btn text btn-sm' }, 'View diff');
   diffBtn.addEventListener('click', () => document.dispatchEvent(new CustomEvent('gitapitaker:diff')));
   node.append(el('span', {}, text), ' ', diffBtn);
 }
@@ -286,8 +289,8 @@ function renderPagination(pagination, onPaginate) {
     el('span', { className: 'pagination-label' }, 'Pagination'),
     el('span', { className: 'mono pagination-info' }, describePagination(pagination)),
   );
-  const prev = el('button', { type: 'button', className: 'btn btn-ghost btn-sm', disabled: !pagination.prevUrl }, '← Prev');
-  const next = el('button', { type: 'button', className: 'btn btn-ghost btn-sm', disabled: !pagination.nextUrl }, 'Next →');
+  const prev = el('button', { type: 'button', className: 'm3-btn tonal btn-sm', disabled: !pagination.prevUrl }, '← Prev');
+  const next = el('button', { type: 'button', className: 'm3-btn tonal btn-sm', disabled: !pagination.nextUrl }, 'Next →');
   if (pagination.prevUrl) prev.addEventListener('click', () => onPaginate?.(pagination.prevUrl));
   if (pagination.nextUrl) next.addEventListener('click', () => onPaginate?.(pagination.nextUrl));
   bar.append(el('span', { className: 'pagination-buttons' }, prev, next));
@@ -467,7 +470,7 @@ function stateChip(state) {
     pending: ['REQUESTING', 'Contacting the provider…'],
   };
   const [label, title] = labels[state] ?? labels.live;
-  return el('span', { className: `chip chip-state state-${state}`, title },
+  return el('span', { className: `m3-chip chip-${state}`, title },
     el('span', { className: 'state-dot', 'aria-hidden': 'true' }), label);
 }
 

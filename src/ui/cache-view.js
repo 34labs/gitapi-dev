@@ -30,7 +30,7 @@ export function renderCacheView(hooks) {
 
   if (entries.length === 0) return;
 
-  const table = el('table', { className: 'kv-table cache-table' },
+  const table = el('table', { className: 'm3-table cache-table' },
     el('thead', {}, el('tr', {},
       el('th', { scope: 'col' }, 'Endpoint'),
       el('th', { scope: 'col' }, 'Provider'),
@@ -46,9 +46,9 @@ export function renderCacheView(hooks) {
 
   for (const { entry, state } of entries) {
     const actions = el('td', { className: 'cache-actions' },
-      el('button', { type: 'button', className: 'btn btn-ghost btn-sm', 'aria-label': `Inspect cached response for ${entry.endpoint}` }, 'Inspect'),
-      el('button', { type: 'button', className: 'btn btn-ghost btn-sm', 'aria-label': `Request ${entry.endpoint} live and update the cache` }, 'Refresh'),
-      el('button', { type: 'button', className: 'btn btn-ghost btn-sm btn-danger', 'aria-label': `Delete cached entry for ${entry.endpoint}` }, 'Delete'),
+      el('button', { type: 'button', className: 'm3-btn tonal btn-sm', 'aria-label': `Inspect cached response for ${entry.endpoint}` }, 'Inspect'),
+      el('button', { type: 'button', className: 'm3-btn tonal btn-sm', 'aria-label': `Request ${entry.endpoint} live and update the cache` }, 'Refresh'),
+      el('button', { type: 'button', className: 'm3-btn text btn-sm btn-danger', 'aria-label': `Delete cached entry for ${entry.endpoint}` }, 'Delete'),
     );
     const [inspectBtn, refreshBtn, deleteBtn] = actions.querySelectorAll('button');
     inspectBtn.addEventListener('click', () => hooks.onInspectEntry(entry, state));
@@ -64,7 +64,7 @@ export function renderCacheView(hooks) {
       el('td', {}, entry.providerId),
       el('td', { className: 'mono' }, String(entry.status)),
       el('td', { className: 'mono', title: formatTimestamp(entry.fetchedAt) }, formatAge(entry.fetchedAt)),
-      el('td', {}, el('span', { className: `chip chip-state state-${state === 'fresh' ? 'cached' : 'stale'}` },
+      el('td', {}, el('span', { className: `m3-chip chip-${state === 'fresh' ? 'cached' : 'stale'}` },
         el('span', { className: 'state-dot', 'aria-hidden': 'true' }), state === 'fresh' ? 'FRESH' : 'STALE')),
       el('td', { className: 'mono' }, formatBytes(entry.sizeBytes)),
       actions,

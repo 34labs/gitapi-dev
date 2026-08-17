@@ -44,14 +44,14 @@ export function renderHistoryView() {
         type: 'button', className: 'history-main', tabindex: '-1',
         'aria-label': `Reopen inspection of ${entry.endpoint}, ${entry.providerId}, ${formatAge(entry.at)}`,
       },
-      el('span', { className: 'chip chip-provider' }, entry.providerId),
-      entry.resourceType ? el('span', { className: 'chip chip-muted mono' }, entry.resourceType) : null,
+      el('span', { className: 'm3-chip chip-provider' }, entry.providerId),
+      entry.resourceType ? el('span', { className: 'm3-chip chip-muted mono' }, entry.resourceType) : null,
       el('code', { className: 'history-endpoint mono' }, truncateMiddle(entry.endpoint, 90)),
       el('span', { className: 'history-meta mono' },
         `${formatAge(entry.at)}${entry.status ? ` · HTTP ${entry.status}` : ''}${entry.stateLabel ? ` · ${entry.stateLabel}` : ''}`),
       ),
       el('button', {
-        type: 'button', className: 'btn btn-ghost btn-sm history-remove', 'aria-label': `Remove history entry for ${entry.endpoint}`,
+        type: 'button', className: 'm3-btn text btn-sm btn-danger history-remove', 'aria-label': `Remove history entry for ${entry.endpoint}`,
       }, 'Remove'),
     );
     row.querySelector('.history-main').addEventListener('click', () => reopenHook(entry));

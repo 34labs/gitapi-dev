@@ -50,7 +50,7 @@ export function renderHeadersView(headers) {
   });
 
   const copy = el('button', {
-    type: 'button', className: 'btn btn-ghost btn-sm',
+    type: 'button', className: 'm3-btn tonal btn-sm',
     onClick: async (e) => {
       const ok = await copyText(pairsToText(rows));
       e.target.textContent = ok ? 'Copied' : 'Copy failed';
