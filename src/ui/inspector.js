@@ -1,8 +1,13 @@
 /**
- * Inspector page presentation: input form, status bar, interpretation
- * banner, the four response views (JSON / RAW / HEADERS / REQUEST) and the
- * endpoint explorer mount. All inspection *logic* lives in core modules;
- * this file only renders state.
+ * Inspector presentation layer — the "instrument panel".
+ *
+ * Signature elements:
+ *   - Resolution pipeline: DETECT → PARSE → RESOLVE → FETCH, rendered with
+ *     the actual values from each stage (or the stage that failed).
+ *   - Metadata rail: state badge, status, timing, size, guard status and
+ *     actions — always labeled LIVE / CACHED / STALE, never color alone.
+ *
+ * All inspection logic lives in core modules; this file only renders state.
  */
 
 import { el, clear, copyText } from './dom.js';
@@ -13,10 +18,12 @@ import { renderRawView } from '../viewer/raw.js';
 import { renderHeadersView } from '../viewer/headers.js';
 import { renderRequestView } from '../viewer/request.js';
 import { tryParseJson } from '../core/request.js';
-import { formatBytes, formatDuration, formatAge } from '../core/format.js';
+import { formatBytes, formatDuration, formatAge, formatTimestamp, truncateMiddle } from '../core/format.js';
 import { interpretHttpStatus } from '../core/errors.js';
 import { renderExplorer } from './explorer.js';
 import { buildShareUrl } from '../core/share.js';
+import { buildCurlCommand } from '../core/curl.js';
+import { describePagination } from '../core/pagination.js';
 
 const EXAMPLES = [
   'https://github.com/flessan',
@@ -63,47 +70,57 @@ export function setInputValue(value) {
   document.getElementById('url-input').value = value;
 }
 
-/** Hide result sections, show a waiting state. */
-export function showPending(endpoint) {
+/* ------------------------------------------------------------------ */
+/* Pipeline                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Render the stage-by-stage pipeline.
+ * @param {Array<{label: string, value: string, state?: 'ok'|'active'|'fail'|'pending'|'skip'}>} stages
+ */
+export function renderPipeline(stages) {
+  const bar = document.getElementById('pipeline');
+  clear(bar);
+  if (!stages || stages.length === 0) {
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  stages.forEach((stage, i) => {
+    if (i > 0) bar.append(el('span', { className: 'pipeline-sep', 'aria-hidden': 'true' }, '─'));
+    bar.append(el('div', { className: `pipeline-stage ps-${stage.state ?? 'ok'}` },
+      el('span', { className: 'stage-label' }, stage.label),
+      el('span', { className: 'stage-value mono', title: stage.value }, stage.value),
+    ));
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* States                                                              */
+/* ------------------------------------------------------------------ */
+
+/** Hide result sections, show a waiting state. @param {object} endpoint @param {Array} stages */
+export function showPending(endpoint, stages = []) {
   toggle('empty-state', false);
   toggle('resolver-error', false);
   toggle('result-area', true);
   toggle('pending-note', true);
-  clear(document.getElementById('status-bar'));
-  clear(document.getElementById('response-tabs'));
-  document.getElementById('status-bar').append(
-    stateChip('pending'),
-    el('code', { className: 'endpoint mono' }, endpoint.url),
-  );
   hideInterpretation();
+  hideChangeNote();
+  hidePagination();
   toggle('explorer-area', false);
-  announce(`Requesting ${endpoint.url} directly from the provider.`);
-}
+  clear(document.getElementById('response-tabs'));
 
-/**
- * The request never produced a response and no cached fallback exists.
- * Rendered as an honest error panel — never as a fake result.
- * @param {{endpoint: object, providerName: string, failure: {title: string, causes: string[], actions: string[]}}} args
- */
-export function showNetworkError({ endpoint, providerName, failure }) {
-  toggle('result-area', false);
-  toggle('pending-note', false);
-  toggle('empty-state', false);
-  const box = document.getElementById('resolver-error');
-  clear(box);
-  box.hidden = false;
-  box.append(
-    el('h2', {}, 'The provider could not be reached'),
-    el('p', { className: 'mono error-code' }, 'network-error'),
-    el('p', {}, failure.title),
-    el('ul', { className: 'hint-list' }, failure.causes.map((c) => el('li', {}, c))),
-    el('p', {}, el('strong', {}, 'What you can do: ')),
-    el('ul', { className: 'hint-list' }, failure.actions.map((a) => el('li', {}, a))),
-    el('p', { className: 'view-note' },
-      `Attempted: GET ${endpoint.url} (${providerName}). No response was received, so no response data is shown.`,
-      ' If a cached copy exists, it is available in the Cache inspector.'),
+  renderPipeline([...stages, { label: 'fetch', value: 'direct request in flight…', state: 'active' }]);
+
+  const rail = document.getElementById('status-bar');
+  clear(rail);
+  rail.append(
+    el('div', { className: 'rail-head' }, stateChip('pending')),
+    el('p', { className: 'rail-endpoint mono' }, `${endpoint.method || 'GET'} ${endpoint.url}`),
+    el('p', { className: 'view-note' }, 'Contacting the provider directly from this browser…'),
   );
-  announce(`Request failed: ${failure.title}`, { assertive: true });
+  announce(`Requesting ${endpoint.url} directly from the provider.`);
 }
 
 /**
@@ -112,68 +129,101 @@ export function showNetworkError({ endpoint, providerName, failure }) {
  *   endpoint: import('../core/types.js').ResolvedEndpoint,
  *   providerName: string,
  *   data: {status: number, statusText: string, headers: Array<[string,string]>, bodyText: string, sizeBytes: number, contentType?: string, durationMs?: number, fetchedAt: number},
- *   state: 'live'|'cached'|'stale'|'live-error',
- *   meta?: {guardNote?: string, interpretation?: {title: string, causes: string[], actions: string[]} | null, webUrl?: string, instanceLabel?: string, source?: string}
+ *   state: 'live'|'cached'|'stale',
+ *   stages?: Array<{label: string, value: string}>,
+ *   meta?: {guardNote?: string|null, interpretation?: object|null, webUrl?: string, instanceLabel?: string, source?: string, changeNote?: object|null, pagination?: object|null, onPaginate?: (url: string) => void}
  * }} args
  */
-export function showResult({ endpoint, providerName, data, state, meta = {} }) {
+export function showResult({ endpoint, providerName, data, state, stages = [], meta = {} }) {
   toggle('empty-state', false);
   toggle('resolver-error', false);
   toggle('result-area', true);
   toggle('pending-note', false);
 
-  renderStatusBar({ endpoint, providerName, data, state, meta });
+  renderPipeline([...stages, fetchStage(state, data, meta)]);
+  renderMetaRail({ endpoint, providerName, data, state, meta });
   renderInterpretation({ data, meta, endpoint });
+  renderChangeNote(meta.changeNote ?? null);
+  renderPagination(meta.pagination ?? null, meta.onPaginate);
   renderTabsArea({ endpoint, data, meta });
 
-  const stateWord = state === 'live' ? 'live response' : state === 'cached' ? 'cached response (provider not contacted this time)' : 'stale cached response';
+  const stateWord = state === 'live'
+    ? 'live response'
+    : state === 'cached'
+      ? 'cached response (provider not contacted this time)'
+      : 'stale cached response';
   announce(`Done. HTTP ${data.status} ${data.statusText || ''} — ${stateWord}.`, { assertive: data.status >= 400 });
 }
 
-function renderStatusBar({ endpoint, providerName, data, state, meta }) {
-  const bar = document.getElementById('status-bar');
-  clear(bar);
-
-  const statusOk = data.status < 400;
-  bar.append(
-    stateChip(state),
-    el('span', { className: 'chip chip-method mono' }, endpoint.method || 'GET'),
-    el('code', { className: 'endpoint mono', title: endpoint.url, tabindex: '0' }, endpoint.url),
-    el('span', { className: 'chip chip-provider' }, providerName + (meta.instanceLabel ? ` · ${meta.instanceLabel}` : '')),
-    el('span', { className: `chip chip-status ${statusOk ? 'ok' : 'err'} mono` }, `${data.status}${data.statusText ? ` ${data.statusText}` : ''}`),
-  );
-
-  const bits = [];
+function fetchStage(state, data, meta) {
+  const size = formatBytes(data.sizeBytes);
   if (state === 'live') {
-    if (typeof data.durationMs === 'number') bits.push(formatDuration(data.durationMs));
-  } else {
-    bits.push(`fetched ${formatAge(data.fetchedAt)}`);
+    return { label: 'fetch', value: `LIVE ${data.status} · ${formatDuration(data.durationMs)} · ${size}`, state: 'ok' };
   }
-  bits.push(formatBytes(data.sizeBytes));
-  bar.append(el('span', { className: 'status-meta mono' }, bits.join(' · ')));
+  const age = `stored ${formatAge(data.fetchedAt)}`;
+  if (meta.reason === 'offline') return { label: 'fetch', value: `STALE · provider unreachable · ${age}`, state: 'fail' };
+  return { label: 'fetch', value: `${state.toUpperCase()} · ${age} · ${size}`, state: state === 'cached' ? 'ok' : 'pending' };
+}
 
-  const actions = el('span', { className: 'status-actions' },
-    iconButton('Refresh', 'Force a live request (bypasses the Request Guard)', () => document.dispatchEvent(new CustomEvent('gitapitaker:refresh'))),
-    iconButton('Diff', 'Compare this response with an older snapshot of the same endpoint', () => document.dispatchEvent(new CustomEvent('gitapitaker:diff'))),
-    iconButton('Share', 'Copy a shareable inspection link (contains only the target URL, never the response)', async (btn) => {
+/* ------------------------------------------------------------------ */
+/* Metadata rail                                                       */
+/* ------------------------------------------------------------------ */
+
+function renderMetaRail({ endpoint, providerName, data, state, meta }) {
+  const rail = document.getElementById('status-bar');
+  clear(rail);
+
+  const statusOk = data.status < 400 && data.status > 0;
+  rail.append(el('div', { className: 'rail-head' },
+    stateChip(state),
+    el('span', { className: `rail-status mono ${statusOk ? 'ok' : 'err'}` }, `${data.status}${data.statusText ? ` ${data.statusText}` : ''}`),
+  ));
+
+  const kv = el('dl', { className: 'rail-kv' });
+  const row = (label, value, title) => {
+    kv.append(el('dt', {}, label), el('dd', { className: 'mono', title: title ?? undefined }, value));
+  };
+  row('endpoint', truncateMiddle(endpoint.url, 46), endpoint.url);
+  row('provider', providerName + (meta.instanceLabel ? ` · ${meta.instanceLabel}` : ''));
+  if (state === 'live' && typeof data.durationMs === 'number') row('duration', formatDuration(data.durationMs));
+  if (state !== 'live') row('age', formatAge(data.fetchedAt));
+  row('size', formatBytes(data.sizeBytes));
+  row('fetched', formatTimestamp(data.fetchedAt));
+  if (meta.source) row('source', meta.source);
+  rail.append(kv);
+
+  const guardNote = el('div', { id: 'guard-note', className: 'guard-note', role: 'note', hidden: '' });
+  if (meta.guardNote) {
+    guardNote.hidden = false;
+    guardNote.append(el('p', {}, meta.guardNote),
+      el('button', { type: 'button', className: 'btn btn-link', onClick: () => document.dispatchEvent(new CustomEvent('gitapitaker:refresh')) }, 'Force live request'));
+  }
+  rail.append(guardNote);
+
+  rail.append(el('div', { className: 'rail-actions' },
+    railButton('Refresh', 'Force a live request (bypasses the Request Guard)', () => document.dispatchEvent(new CustomEvent('gitapitaker:refresh'))),
+    railButton('Diff', 'Compare with an older snapshot of this endpoint', () => document.dispatchEvent(new CustomEvent('gitapitaker:diff'))),
+    railButton('Share', 'Copy a shareable inspection link (target URL only, never the response)', async () => {
       const target = meta.webUrl ?? endpoint.url;
       const ok = await copyText(buildShareUrl(target));
-      flash(btn, ok);
-      announce(ok ? 'Share link copied. It contains only the target URL, never the response.' : 'Copy failed.', {});
+      announce(ok ? 'Share link copied. It contains only the target URL, never the response.' : 'Copy failed.');
     }),
-  );
-  bar.append(actions);
-
-  const guardNote = document.getElementById('guard-note');
-  clear(guardNote);
-  if (meta.guardNote) {
-    guardNote.append(el('span', {}, meta.guardNote), ' ',
-      el('button', { type: 'button', className: 'btn btn-link', onClick: () => document.dispatchEvent(new CustomEvent('gitapitaker:refresh')) }, 'Force live request'));
-    guardNote.hidden = false;
-  } else {
-    guardNote.hidden = true;
-  }
+    railButton('cURL', 'Copy this request as a cURL command', async () => {
+      const ok = await copyText(buildCurlCommand(endpoint));
+      announce(ok ? 'cURL command copied. It contains no credentials.' : 'Copy failed.');
+    }),
+  ));
 }
+
+function railButton(text, label, onClick) {
+  const btn = el('button', { type: 'button', className: 'btn btn-ghost btn-sm', title: label, 'aria-label': label }, text);
+  btn.addEventListener('click', () => onClick());
+  return btn;
+}
+
+/* ------------------------------------------------------------------ */
+/* Interpretation / change note / pagination                           */
+/* ------------------------------------------------------------------ */
 
 function renderInterpretation({ data, meta, endpoint }) {
   const interp = meta.interpretation !== undefined
@@ -192,8 +242,61 @@ function renderInterpretation({ data, meta, endpoint }) {
     interp.actions?.length
       ? el('div', { className: 'interp-actions' }, el('strong', {}, 'What you can do: '), el('ul', {}, interp.actions.map((a) => el('li', {}, a))))
       : null,
+    interp.quickActions?.length ? el('div', { className: 'interp-quick' }, quickActionButtons(interp.quickActions)) : null,
     el('p', { className: 'view-note' }, 'The provider’s original response body is preserved unchanged in the RAW and JSON views below.'),
   );
+}
+
+function quickActionButtons(actions) {
+  return actions.map((a) => {
+    const btn = el('button', { type: 'button', className: 'btn btn-ghost btn-sm' }, a.label);
+    btn.addEventListener('click', () => {
+      if (a.input) document.dispatchEvent(new CustomEvent('gitapitaker:inspect', { detail: { input: a.input } }));
+      if (a.goto) document.dispatchEvent(new CustomEvent('gitapitaker:goto', { detail: { page: a.goto } }));
+    });
+    return btn;
+  });
+}
+
+function renderChangeNote(changeNote) {
+  const node = document.getElementById('change-note');
+  clear(node);
+  if (!changeNote) { node.hidden = true; return; }
+  node.hidden = false;
+  const text = changeNote.findings >= 0
+    ? `This response changed since the previous capture — ${changeNote.findings} structural difference${changeNote.findings === 1 ? '' : 's'} detected.`
+    : 'This response body changed since the previous capture (non-JSON bodies cannot be diffed structurally — compare RAW).';
+  const diffBtn = el('button', { type: 'button', className: 'btn btn-ghost btn-sm' }, 'View diff');
+  diffBtn.addEventListener('click', () => document.dispatchEvent(new CustomEvent('gitapitaker:diff')));
+  node.append(el('span', {}, text), ' ', diffBtn);
+}
+
+function hideChangeNote() {
+  const node = document.getElementById('change-note');
+  clear(node);
+  node.hidden = true;
+}
+
+function renderPagination(pagination, onPaginate) {
+  const bar = document.getElementById('pagination-bar');
+  clear(bar);
+  if (!pagination || (!pagination.nextUrl && !pagination.prevUrl)) { bar.hidden = true; return; }
+  bar.hidden = false;
+  bar.append(
+    el('span', { className: 'pagination-label' }, 'Pagination'),
+    el('span', { className: 'mono pagination-info' }, describePagination(pagination)),
+  );
+  const prev = el('button', { type: 'button', className: 'btn btn-ghost btn-sm', disabled: !pagination.prevUrl }, '← Prev');
+  const next = el('button', { type: 'button', className: 'btn btn-ghost btn-sm', disabled: !pagination.nextUrl }, 'Next →');
+  if (pagination.prevUrl) prev.addEventListener('click', () => onPaginate?.(pagination.prevUrl));
+  if (pagination.nextUrl) next.addEventListener('click', () => onPaginate?.(pagination.nextUrl));
+  bar.append(el('span', { className: 'pagination-buttons' }, prev, next));
+}
+
+function hidePagination() {
+  const bar = document.getElementById('pagination-bar');
+  clear(bar);
+  bar.hidden = true;
 }
 
 function hideInterpretation() {
@@ -202,6 +305,10 @@ function hideInterpretation() {
   banner.hidden = true;
 }
 
+/* ------------------------------------------------------------------ */
+/* Tabs                                                                */
+/* ------------------------------------------------------------------ */
+
 function renderTabsArea({ endpoint, data, meta }) {
   const mount = document.getElementById('response-tabs');
   clear(mount);
@@ -209,7 +316,7 @@ function renderTabsArea({ endpoint, data, meta }) {
 
   tabsInstance = createTabs([
     {
-      id: 'json', label: 'JSON',
+      id: 'json', label: 'JSON', kbd: '1',
       render: (panel) => {
         if (!parsed.isJson) {
           panel.append(el('p', { className: 'empty-note' },
@@ -221,65 +328,106 @@ function renderTabsArea({ endpoint, data, meta }) {
       },
     },
     {
-      id: 'raw', label: 'RAW',
+      id: 'raw', label: 'RAW', kbd: '2',
       render: (panel) => panel.append(renderRawView(data.bodyText, { sizeBytes: data.sizeBytes, contentType: data.contentType })),
     },
     {
-      id: 'headers', label: 'HEADERS',
+      id: 'headers', label: 'HEADERS', kbd: '3',
       render: (panel) => panel.append(renderHeadersView(data.headers)),
     },
     {
-      id: 'request', label: 'REQUEST',
+      id: 'request', label: 'REQUEST', kbd: '4',
       render: (panel) => panel.append(renderRequestView(endpoint, { instanceLabel: meta.instanceLabel, source: meta.source })),
     },
   ], { ariaLabel: 'Response views' });
   mount.append(tabsInstance.root);
 }
 
-/** @param {'live'|'cached'|'stale'|'pending'} state */
-function stateChip(state) {
-  const labels = {
-    live: ['LIVE', 'Browser contacted the provider for this inspection'],
-    cached: ['CACHED', 'Served from local cache — the provider was NOT contacted this time'],
-    stale: ['STALE', 'Older cached copy — the provider was not contacted (or could not be reached)'],
-    pending: ['REQUESTING', 'Contacting the provider…'],
-  };
-  const [label, title] = labels[state] ?? labels.live;
-  return el('span', { className: `chip chip-state state-${state}`, title },
-    el('span', { className: 'state-dot', 'aria-hidden': 'true' }), label);
-}
+/* ------------------------------------------------------------------ */
+/* Errors & empty state                                                */
+/* ------------------------------------------------------------------ */
 
-function iconButton(text, ariaLabel, onClick) {
-  const btn = el('button', { type: 'button', className: 'btn btn-ghost btn-sm', title: ariaLabel, 'aria-label': ariaLabel }, text);
-  btn.addEventListener('click', () => onClick(btn));
-  return btn;
-}
-
-function flash(btn, ok) {
-  const original = btn.textContent;
-  btn.textContent = ok ? 'Copied' : 'Copy failed';
-  setTimeout(() => { btn.textContent = original; }, 1500);
-}
+const STAGE_ORDER = ['input', 'detect', 'parse', 'resolve', 'fetch'];
 
 /**
- * Show a resolver error (malformed URL, unsupported provider/resource).
+ * Show a resolver error with an honest stage-by-stage pipeline view.
  * @param {import('../core/errors.js').ResolverError} err
  */
 export function showResolverError(err) {
   toggle('result-area', false);
   toggle('pending-note', false);
   toggle('empty-state', false);
+  hideInterpretation();
+  hideChangeNote();
+  hidePagination();
+  toggle('explorer-area', false);
+
+  const failedAt = err.stage ?? 'input';
+  const ctx = err.context ?? {};
+  const failedIndex = STAGE_ORDER.indexOf(failedAt);
+  const values = {
+    input: ctx.input ?? '—',
+    detect: ctx.host ? `${ctx.host} → ${ctx.providerId ?? 'no adapter matched'}` : (ctx.input ?? '—'),
+    parse: ctx.providerId ? `${ctx.providerId} resource parse` : '—',
+    resolve: ctx.parsed ? `${ctx.parsed.resourceType}` : '—',
+    fetch: 'not attempted',
+  };
+  const stages = STAGE_ORDER.map((label, i) => ({
+    label,
+    value: i === failedIndex ? (label === failedAt ? shortFailureValue(label, err, values) : values[label]) : (i < failedIndex ? values[label] : '—'),
+    state: i === failedIndex ? 'fail' : (i < failedIndex ? 'ok' : 'skip'),
+  }));
+  renderPipeline(stages);
+
   const box = document.getElementById('resolver-error');
   clear(box);
   box.hidden = false;
   box.append(
     el('h2', {}, 'GitAPITaker could not resolve this input'),
-    el('p', { className: 'mono error-code' }, err.code),
+    el('p', { className: 'mono error-code' }, `${err.code} · stage: ${failedAt}`),
     el('p', {}, err.message),
     err.hints?.length ? el('ul', { className: 'hint-list' }, err.hints.map((h) => el('li', {}, h))) : null,
+    err.quickActions?.length ? el('div', { className: 'interp-quick' }, quickActionButtons(err.quickActions)) : null,
     el('p', { className: 'view-note' }, 'No request was sent. Nothing was contacted.'),
   );
-  announce(`Resolution failed: ${err.message}`, { assertive: true });
+  announce(`Resolution failed at ${failedAt}: ${err.message}`, { assertive: true });
+}
+
+function shortFailureValue(stage, err, values) {
+  if (stage === 'detect') return `${err.context?.host ?? '?'} → no adapter`;
+  return values[stage] ?? 'failed';
+}
+
+/**
+ * The request never produced a response and no cached fallback exists.
+ * @param {{endpoint: object, providerName: string, failure: {title: string, causes: string[], actions: string[]}, stages?: Array}} args
+ */
+export function showNetworkError({ endpoint, providerName, failure, stages = [] }) {
+  toggle('result-area', false);
+  toggle('pending-note', false);
+  toggle('empty-state', false);
+  hideInterpretation();
+  hideChangeNote();
+  hidePagination();
+  toggle('explorer-area', false);
+
+  renderPipeline([...stages, { label: 'fetch', value: 'no response — network/CORS failure', state: 'fail' }]);
+
+  const box = document.getElementById('resolver-error');
+  clear(box);
+  box.hidden = false;
+  box.append(
+    el('h2', {}, 'The provider could not be reached'),
+    el('p', { className: 'mono error-code' }, `network-error · ${providerName}`),
+    el('p', {}, failure.title),
+    el('ul', { className: 'hint-list' }, failure.causes.map((c) => el('li', {}, c))),
+    el('p', {}, el('strong', {}, 'What you can do: ')),
+    el('ul', { className: 'hint-list' }, failure.actions.map((a) => el('li', {}, a))),
+    el('p', { className: 'view-note' },
+      `Attempted: ${endpoint.method || 'GET'} ${endpoint.url}. No response was received, so no response data is shown.`,
+      ' If a cached copy exists, it is available in the Cache inspector.'),
+  );
+  announce(`Request failed: ${failure.title}`, { assertive: true });
 }
 
 /** Show the first-visit empty state. */
@@ -288,6 +436,7 @@ export function showEmptyState() {
   toggle('resolver-error', false);
   toggle('pending-note', false);
   toggle('empty-state', true);
+  renderPipeline([]);
 }
 
 /** Mount (or hide) the endpoint explorer for the current resolution. */
@@ -301,10 +450,25 @@ export function mountExplorer(detection, parsed, hooks) {
     return;
   }
   area.hidden = false;
-  clear(area);
   area.append(el('h2', { className: 'section-title' }, 'Endpoint Explorer'),
     el('p', { className: 'view-note' }, `Related resources for ${detection.provider.describe(parsed)} — driven by the ${detection.provider.name} adapter’s capability metadata.`));
   area.append(renderExplorer(related, hooks));
+}
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
+
+function stateChip(state) {
+  const labels = {
+    live: ['LIVE', 'Browser contacted the provider for this inspection'],
+    cached: ['CACHED', 'Served from local cache — the provider was NOT contacted this time'],
+    stale: ['STALE', 'Older cached copy — the provider was not contacted (or could not be reached)'],
+    pending: ['REQUESTING', 'Contacting the provider…'],
+  };
+  const [label, title] = labels[state] ?? labels.live;
+  return el('span', { className: `chip chip-state state-${state}`, title },
+    el('span', { className: 'state-dot', 'aria-hidden': 'true' }), label);
 }
 
 function toggle(id, visible) {
@@ -320,4 +484,3 @@ export function selectResponseTab(id) {
 export function hasResult() {
   return !document.getElementById('result-area').hidden;
 }
-

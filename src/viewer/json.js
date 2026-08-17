@@ -1,13 +1,16 @@
 /**
- * JSON view: renders parsed JSON as an accessible, keyboard-operable tree
- * with collapsible objects/arrays and syntax highlighting.
+ * JSON view: accessible, keyboard-operable tree with collapsible nodes,
+ * syntax highlighting, live key/value search with auto-expand of matches,
+ * and click-to-copy JSONPath + values.
  *
  * The RAW view always shows the exact body; this view is the parsed,
  * formatted representation. If the body is not valid JSON, this view says
  * so and points to RAW — it never reinterprets the body.
  */
 
-import { el } from '../ui/dom.js';
+import { el, clear, copyText } from '../ui/dom.js';
+import { announce } from '../ui/announce.js';
+import { findMatches, subtreeHasMatch } from '../core/jsonsearch.js';
 
 const DEFAULT_EXPAND_DEPTH = 2;
 
@@ -18,59 +21,111 @@ const DEFAULT_EXPAND_DEPTH = 2;
 export function renderJsonTree(value, opts = {}) {
   const expandDepth = opts.expandDepth ?? DEFAULT_EXPAND_DEPTH;
   const root = el('div', { className: 'json-view' });
-  const toolbar = el('div', { className: 'json-toolbar', role: 'group', 'aria-label': 'JSON tree controls' },
-    el('button', { type: 'button', className: 'btn btn-ghost btn-sm', onClick: () => setAll(root, true) }, 'Expand all'),
-    el('button', { type: 'button', className: 'btn btn-ghost btn-sm', onClick: () => setAll(root, false) }, 'Collapse all'),
-  );
-  root.append(toolbar, buildNode(value, null, 0, expandDepth));
-  return root;
-}
 
-function setAll(root, expanded) {
-  root.querySelectorAll('button.json-toggle').forEach((btn) => {
-    const li = btn.closest('li');
-    if (!li) return;
-    applyToggle(li, expanded);
+  const searchInput = el('input', {
+    type: 'search',
+    className: 'input json-search',
+    placeholder: 'Filter keys & values…',
+    'aria-label': 'Filter JSON keys and values',
+    spellcheck: 'false',
   });
-}
+  const matchInfo = el('span', { className: 'json-match-info', role: 'status' });
+  const treeMount = el('div', { className: 'json-tree' });
 
-/** @param {*} value @param {string|null} key @param {number} depth @param {number} expandDepth */
-function buildNode(value, key, depth, expandDepth) {
-  const keyNode = key === null ? null : el('span', { className: 'j-key' }, `"${key}"`, el('span', { className: 'j-punct' }, ': '));
+  const toolbar = el('div', { className: 'json-toolbar', role: 'group', 'aria-label': 'JSON tree controls' },
+    searchInput, matchInfo,
+    el('span', { className: 'json-toolbar-spacer' }),
+    el('button', { type: 'button', className: 'btn btn-ghost btn-sm', onClick: () => setAll(treeMount, true) }, 'Expand all'),
+    el('button', { type: 'button', className: 'btn btn-ghost btn-sm', onClick: () => setAll(treeMount, false) }, 'Collapse all'),
+  );
 
-  if (value !== null && typeof value === 'object') {
-    const isArray = Array.isArray(value);
-    const entries = isArray ? value.map((v, i) => [String(i), v]) : Object.entries(value);
-    const open = isArray ? '[' : '{';
-    const close = isArray ? ']' : '}';
-    const summary = isArray ? `${value.length} items` : `${entries.length} ${entries.length === 1 ? 'key' : 'keys'}`;
+  let debounceTimer;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => renderTree(searchInput.value), 140);
+  });
 
-    const toggle = el('button', {
-      type: 'button',
-      className: 'json-toggle',
-      'aria-expanded': 'false',
-      'aria-label': `${key === null ? 'Root' : `Property ${key}`}: ${open}…${close}, ${summary}. Toggle.`,
-    }, el('span', { className: 'j-caret', 'aria-hidden': 'true' }, '▸'), el('span', { className: 'j-punct' }, open));
+  let currentMatches = [];
 
-    const childList = el('ul', { className: 'json-children', hidden: '' });
-    for (const [childKey, childValue] of entries) {
-      // Array items render without an index key, like conventional JSON trees.
-      childList.append(buildNode(childValue, isArray ? null : childKey, depth + 1, expandDepth));
-    }
-    const closePunct = el('span', { className: 'j-punct' }, close);
-    const preview = el('span', { className: 'j-preview', 'aria-hidden': 'true' }, ` … ${summary} `);
-
-    const li = el('li', { className: 'json-node' },
-      keyNode, toggle, preview, childList, closePunct,
-    );
-
-    toggle.addEventListener('click', () => applyToggle(li, toggle.getAttribute('aria-expanded') !== 'true'));
-    if (depth < expandDepth) applyToggle(li, true);
-    return li;
+  function renderTree(query) {
+    const q = (query ?? '').trim();
+    const { paths } = findMatches(value, q);
+    currentMatches = paths;
+    matchInfo.textContent = q ? `${paths.length}${paths.length >= 1000 ? '+' : ''} match${paths.length === 1 ? '' : 'es'}` : '';
+    clear(treeMount);
+    treeMount.append(buildNode(value, null, 0, '$', new Set(paths), q !== ''));
   }
 
-  const valueNode = renderPrimitive(value);
-  return el('li', { className: 'json-node json-leaf' }, keyNode, valueNode);
+  function setAll(container, expanded) {
+    container.querySelectorAll('button.json-toggle').forEach((btn) => {
+      const li = btn.closest('li');
+      if (li) applyToggle(li, expanded);
+    });
+  }
+
+  /** @param {HTMLElement} node @param {string} what */
+  async function copyAndAnnounce(text, what) {
+    const ok = await copyText(text);
+    announce(ok ? `Copied ${what}.` : 'Copy failed.', {});
+  }
+
+  /**
+   * @param {*} v @param {string|null} key @param {number} depth
+   * @param {string} path @param {Set<string>} matchSet @param {boolean} searching
+   */
+  function buildNode(v, key, depth, path, matchSet, searching) {
+    const keyNode = key === null ? null : el('span', {
+      className: 'j-key',
+      role: 'button',
+      tabindex: '-1',
+      title: `Click to copy path ${path}`,
+      onClick: () => copyAndAnnounce(path, `path ${path}`),
+    }, `"${key}"`, el('span', { className: 'j-punct' }, ': '));
+
+    if (v !== null && typeof v === 'object') {
+      const isArray = Array.isArray(v);
+      const entries = isArray ? v.map((item, i) => [String(i), item]) : Object.entries(v);
+      const open = isArray ? '[' : '{';
+      const close = isArray ? ']' : '}';
+      const summary = isArray ? `${v.length} items` : `${entries.length} ${entries.length === 1 ? 'key' : 'keys'}`;
+
+      const toggle = el('button', {
+        type: 'button',
+        className: 'json-toggle',
+        'aria-expanded': 'false',
+        'aria-label': `${key === null ? 'Root' : `Property ${key}`}: ${open}…${close}, ${summary}. Toggle.`,
+      }, el('span', { className: 'j-caret', 'aria-hidden': 'true' }, '▸'), el('span', { className: 'j-punct' }, open));
+
+      const childList = el('ul', { className: 'json-children', hidden: '' });
+      for (const [childKey, childValue] of entries) {
+        const childPath = isArray ? `${path}[${childKey}]` : `${path}.${childKey}`;
+        childList.append(buildNode(childValue, isArray ? null : childKey, depth + 1, childPath, matchSet, searching));
+      }
+      const closePunct = el('span', { className: 'j-punct' }, close);
+      const preview = el('span', { className: 'j-preview', 'aria-hidden': 'true' }, ` … ${summary} `);
+
+      const li = el('li', { className: 'json-node' }, keyNode, toggle, preview, childList, closePunct);
+      toggle.addEventListener('click', () => applyToggle(li, toggle.getAttribute('aria-expanded') !== 'true'));
+
+      const shouldExpand = searching ? subtreeHasMatch(currentMatches, path) : depth < expandDepth;
+      if (shouldExpand) applyToggle(li, true);
+      return li;
+    }
+
+    const isHit = matchSet.has(path);
+    const valueNode = renderPrimitive(v, isHit);
+    valueNode.setAttribute('role', 'button');
+    valueNode.setAttribute('tabindex', '-1');
+    valueNode.title = 'Click to copy value';
+    valueNode.addEventListener('click', () => copyAndAnnounce(JSON.stringify(v), 'value'));
+    const liClass = `json-node json-leaf${isHit ? ' json-leaf-hit' : ''}`;
+    return el('li', { className: liClass }, keyNode, valueNode);
+  }
+
+  renderTree('');
+  root.append(toolbar, treeMount, el('p', { className: 'view-note json-hint' },
+    'Tip: click a key to copy its path, click a value to copy it. Search auto-expands matches.'));
+  return root;
 }
 
 function applyToggle(li, expanded) {
@@ -87,12 +142,13 @@ function applyToggle(li, expanded) {
   if (close) close.hidden = !expanded;
 }
 
-function renderPrimitive(value) {
-  if (value === null) return el('span', { className: 'j-null' }, 'null');
+function renderPrimitive(value, hit) {
+  const cls = hit ? ' j-hit' : '';
+  if (value === null) return el('span', { className: `j-null${cls}` }, 'null');
   switch (typeof value) {
-    case 'string': return el('span', { className: 'j-string' }, `"${value}"`);
-    case 'number': return el('span', { className: 'j-number' }, String(value));
-    case 'boolean': return el('span', { className: 'j-boolean' }, String(value));
-    default: return el('span', { className: 'j-null' }, String(value));
+    case 'string': return el('span', { className: `j-string${cls}` }, `"${value}"`);
+    case 'number': return el('span', { className: `j-number${cls}` }, String(value));
+    case 'boolean': return el('span', { className: `j-boolean${cls}` }, String(value));
+    default: return el('span', { className: `j-null${cls}` }, String(value));
   }
 }

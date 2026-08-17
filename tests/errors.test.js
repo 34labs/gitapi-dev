@@ -9,6 +9,12 @@ test('404 for a github user suggests the org endpoint', () => {
   assert.ok(interp.actions.some((a) => a.includes('/orgs/flessan')));
 });
 
+test('404 for a github user offers a one-click org quick action', () => {
+  const interp = interpretHttpStatus(404, 'github', [], { resourceType: 'user', params: { login: 'flessan' } });
+  assert.ok(Array.isArray(interp.quickActions) && interp.quickActions.length === 1);
+  assert.equal(interp.quickActions[0].input, 'https://github.com/orgs/flessan');
+});
+
 test('404 for gitlab project mentions URL-encoded paths', () => {
   const interp = interpretHttpStatus(404, 'gitlab', [], { resourceType: 'project', params: { fullPath: 'a/b' } });
   assert.ok(interp.causes.some((c) => c.includes('URL-encoded')));

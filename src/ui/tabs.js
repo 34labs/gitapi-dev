@@ -30,7 +30,8 @@ export function createTabs(tabs, opts = {}) {
       'aria-selected': 'false',
       tabindex: i === 0 ? '0' : '-1',
       dataset: { tabId: tab.id },
-    }, tab.label);
+      title: tab.kbd ? `Shortcut: ${tab.kbd}` : undefined,
+    }, tab.label, tab.kbd ? el('span', { className: 'tab-kbd', 'aria-hidden': 'true' }, tab.kbd) : null);
     btn.addEventListener('click', () => select(tab.id));
     buttons.set(tab.id, btn);
 

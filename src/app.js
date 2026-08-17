@@ -18,6 +18,7 @@ import { addHistory, clearHistory } from './core/history.js';
 import { buildCurlCommand } from './core/curl.js';
 import { buildShareUrl } from './core/share.js';
 import { diffJson } from './core/diff.js';
+import { detectPagination } from './core/pagination.js';
 import { getProvider } from './providers/registry.js';
 import { formatAge, formatTimestamp } from './core/format.js';
 
@@ -27,6 +28,7 @@ import { createRouter, navigate } from './ui/router.js';
 import { createPalette } from './ui/palette.js';
 import { createHelp } from './ui/help.js';
 import { rovingList } from './ui/keyboard.js';
+import { getTheme, setTheme, nextTheme, applyTheme } from './ui/theme.js';
 import {
   initInspector, focusInput, getInputValue, setInputValue,
   showPending, showResult, showResolverError, showEmptyState, showNetworkError,
@@ -41,6 +43,34 @@ const guard = createGuard();
 
 /** Current inspection context (or null). */
 let current = null;
+
+/* ------------------------------------------------------------------ */
+/* Pipeline stages                                                     */
+/* ------------------------------------------------------------------ */
+
+function describeParams(parsed) {
+  if (!parsed) return '';
+  const bits = Object.entries(parsed.params).slice(0, 3).map(([k, v]) => `${k}=${v}`);
+  return bits.join(' · ');
+}
+
+/** Stages for a successful web-URL resolution. */
+function stagesFromResolution(resolution) {
+  const { url, detection, parsed, endpoint } = resolution;
+  return [
+    { label: 'detect', value: `${url.hostname} → ${detection.provider.id}${detection.ctx.instanceLabel ? ` · ${detection.ctx.instanceLabel}` : ''}`, state: 'ok' },
+    { label: 'parse', value: `${parsed.resourceType}${describeParams(parsed) ? ` · ${describeParams(parsed)}` : ''}`, state: 'ok' },
+    { label: 'resolve', value: `${endpoint.method} ${endpoint.url}`, state: 'ok' },
+  ];
+}
+
+/** Stages for direct endpoint inspections (explorer / history / cache). */
+function stagesFromEndpoint(endpoint, source) {
+  return [
+    { label: 'source', value: source, state: 'ok' },
+    { label: 'resolve', value: `${endpoint.method || 'GET'} ${endpoint.url}`, state: 'ok' },
+  ];
+}
 
 /* ------------------------------------------------------------------ */
 /* Inspection flow                                                     */
@@ -70,6 +100,7 @@ async function inspectInput(rawInput, opts = {}) {
     webUrl: url.toString(), source: 'url',
     providerName: provider.name,
     instanceLabel: detection.ctx.instanceLabel,
+    stages: stagesFromResolution(resolution),
   });
 }
 
@@ -83,10 +114,11 @@ async function inspectEndpoint(endpoint, opts = {}) {
     webUrl = null, source = 'explorer',
     providerName = getProvider(endpoint.providerId)?.name ?? endpoint.providerId,
     instanceLabel = undefined,
+    stages = stagesFromEndpoint(endpoint, source),
   } = opts;
 
   const key = cacheKey(endpoint.providerId, endpoint.method, endpoint.url);
-  current = { endpoint, detection, parsed, webUrl, cacheKey: key, providerName, instanceLabel };
+  current = { endpoint, detection, parsed, webUrl, cacheKey: key, providerName, instanceLabel, stages };
 
   const decision = guard.decide(key, { force });
   if (decision.action === 'cache') {
@@ -97,6 +129,7 @@ async function inspectEndpoint(endpoint, opts = {}) {
         state: entryState(entry) === 'fresh' ? 'cached' : 'stale',
         guardNote: buildGuardNote(key),
         reason: 'suppressed',
+        stages,
       });
       addHistory({
         providerId: endpoint.providerId, resourceType: parsed?.resourceType ?? endpoint.resourceType,
@@ -108,11 +141,12 @@ async function inspectEndpoint(endpoint, opts = {}) {
     // Guard wanted cache but none exists — a live request is the only honest option.
   }
 
-  showPending(endpoint);
+  showPending(endpoint, stages);
   const result = await executeEndpoint(endpoint);
 
   if (result.ok) {
     const record = result.record;
+    const previous = readEntry(key);
     const { stored } = storeLiveResponse(key, record, { webUrl, resourceType: parsed?.resourceType ?? endpoint.resourceType });
     guard.recordLive(key);
     addHistory({
@@ -124,8 +158,14 @@ async function inspectEndpoint(endpoint, opts = {}) {
       ? interpretHttpStatus(record.status, endpoint.providerId, record.headers, parsed)
       : null;
     showResult({
-      endpoint, providerName, data: record, state: 'live',
-      meta: { interpretation, webUrl, instanceLabel, source, stored: stored ? undefined : 'storage-unavailable' },
+      endpoint, providerName, data: record, state: 'live', stages,
+      meta: {
+        interpretation, webUrl, instanceLabel, source,
+        pagination: detectPagination({ providerId: endpoint.providerId, url: endpoint.url, headers: record.headers }),
+        onPaginate: (url) => paginateTo(url),
+        changeNote: computeChangeNote(previous, record),
+        stored: stored ? undefined : 'storage-unavailable',
+      },
     });
     if (!stored) {
       announce('Warning: browser storage is unavailable; this response cannot be cached locally.', { assertive: true });
@@ -148,12 +188,49 @@ async function inspectEndpoint(endpoint, opts = {}) {
         guardNote: null,
         reason: 'offline',
         errorInterp: failure,
+        stages,
       });
     } else {
-      showNetworkError({ endpoint, providerName, failure });
+      showNetworkError({ endpoint, providerName, failure, stages });
       current = null;
     }
   }
+}
+
+/**
+ * Compare a fresh record with the previously cached body and summarize —
+ * powers the "response changed since last capture" note.
+ * @returns {null | {findings: number}}
+ */
+function computeChangeNote(previous, record) {
+  if (!previous || !record.live) return null;
+  if (previous.bodyText === record.bodyText && previous.status === record.status) return null;
+  const a = tryParseJson(previous.bodyText);
+  const b = tryParseJson(record.bodyText);
+  if (a.isJson && b.isJson) return { findings: diffJson(a.value, b.value).length };
+  return { findings: -1 };
+}
+
+/** Follow a pagination link with the current provider's headers. */
+function paginateTo(url) {
+  if (!current) return;
+  const provider = getProvider(current.endpoint.providerId);
+  inspectEndpoint({
+    providerId: current.endpoint.providerId,
+    method: 'GET',
+    url,
+    headers: provider?.requestHeaders ?? { Accept: 'application/json' },
+    resourceType: current.parsed?.resourceType,
+    parsed: current.parsed ?? undefined,
+  }, {
+    detection: current.detection, parsed: current.parsed,
+    webUrl: current.webUrl, source: 'pagination',
+    providerName: current.providerName, instanceLabel: current.instanceLabel,
+    stages: [
+      { label: 'source', value: 'pagination link (provider-supplied)', state: 'ok' },
+      { label: 'resolve', value: `GET ${url}`, state: 'ok' },
+    ],
+  });
 }
 
 function buildGuardNote(key) {
@@ -167,7 +244,7 @@ function buildGuardNote(key) {
 }
 
 /** Render a cache entry as CACHED/STALE — never as live. */
-function showCached(entry, { state, guardNote, reason, errorInterp = null }) {
+function showCached(entry, { state, guardNote, reason, errorInterp = null, stages = null }) {
   const providerName = getProvider(entry.providerId)?.name ?? entry.providerId;
   const endpoint = {
     providerId: entry.providerId,
@@ -177,17 +254,24 @@ function showCached(entry, { state, guardNote, reason, errorInterp = null }) {
     resourceType: entry.resourceType,
     apiBase: undefined,
   };
-  current = { endpoint, detection: null, parsed: null, webUrl: entry.webUrl ?? null, cacheKey: entry.key, providerName };
+  current = {
+    endpoint, detection: null, parsed: null, webUrl: entry.webUrl ?? null,
+    cacheKey: entry.key, providerName,
+    stages: stages ?? stagesFromEndpoint(endpoint, 'cache'),
+  };
 
   const meta = {
     guardNote: guardNote ?? null,
     interpretation: errorInterp ?? (entry.status >= 400 ? interpretHttpStatus(entry.status, entry.providerId, entry.headers) : null),
     webUrl: entry.webUrl,
+    reason,
     source: reason === 'offline'
       ? 'Offline fallback (provider unreachable; local cache shown)'
       : reason === 'suppressed'
         ? 'Served by Request Guard from local cache'
         : 'Loaded from local cache',
+    pagination: detectPagination({ providerId: entry.providerId, url: entry.endpoint, headers: entry.headers }),
+    onPaginate: (url) => paginateTo(url),
   };
   showResult({
     endpoint, providerName,
@@ -196,6 +280,7 @@ function showCached(entry, { state, guardNote, reason, errorInterp = null }) {
       bodyText: entry.bodyText, sizeBytes: entry.sizeBytes, fetchedAt: entry.fetchedAt,
     },
     state,
+    stages: current.stages,
     meta,
   });
   mountExplorer(current.detection, current.parsed, { onSelect: () => {} });
@@ -203,8 +288,6 @@ function showCached(entry, { state, guardNote, reason, errorInterp = null }) {
     ? 'Provider unreachable. Showing a stale cached copy; all four views remain available.'
     : `Request suppressed by the Request Guard. Showing ${state} cached response from ${formatAge(entry.fetchedAt)}.`);
 }
-
-
 
 function refreshCurrent() {
   if (!current) {
@@ -217,6 +300,7 @@ function refreshCurrent() {
     detection: current.detection, parsed: current.parsed, force: true,
     webUrl: current.webUrl, source: 'url',
     providerName: current.providerName, instanceLabel: current.instanceLabel,
+    stages: current.stages,
   });
 }
 
@@ -385,6 +469,7 @@ function getPaletteActions() {
     { id: 'copy-curl', label: 'Copy as cURL', hint: 'y', keywords: 'curl command copy', run: copyCurl },
     { id: 'copy-share', label: 'Copy share link', hint: 's', keywords: 'share url link copy', run: copyShare },
     { id: 'diff', label: 'Response diff (compare with older snapshot)', hint: 'd', keywords: 'diff compare changes', run: openDiff },
+    { id: 'theme', label: 'Cycle color theme (auto/dark/light)', hint: 't', keywords: 'theme color dark light appearance', run: cycleTheme },
     { id: 'page-history', label: 'Go to: History', keywords: 'history past inspections', run: () => navigate('history') },
     { id: 'page-cache', label: 'Go to: Cache inspector', keywords: 'cache storage entries', run: () => navigate('cache') },
     { id: 'page-providers', label: 'Go to: Providers & instances', keywords: 'providers docs instances self-hosted', run: () => navigate('providers') },
@@ -429,6 +514,23 @@ function historyClear() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Theme                                                               */
+/* ------------------------------------------------------------------ */
+
+function updateThemeButton() {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  btn.textContent = `theme: ${getTheme()}`;
+}
+
+function cycleTheme() {
+  const next = nextTheme(getTheme());
+  setTheme(next);
+  updateThemeButton();
+  announce(`Color theme set to ${next === 'auto' ? 'auto (follow system)' : next}.`);
+}
+
+/* ------------------------------------------------------------------ */
 /* Boot                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -436,6 +538,10 @@ let palette;
 let help;
 
 function boot() {
+  applyTheme(getTheme());
+  updateThemeButton();
+  document.getElementById('theme-toggle')?.addEventListener('click', cycleTheme);
+
   initInspector({ onInspect: (value) => inspectInput(value) });
   initHistory({
     onReopen: (entry) => {
@@ -468,6 +574,8 @@ function boot() {
   document.addEventListener('gitapitaker:refresh', () => refreshCurrent());
   document.addEventListener('gitapitaker:diff', () => openDiff());
   document.addEventListener('gitapitaker:cache-changed', () => { if (currentPage === 'cache') renderCacheView(cacheHooks); });
+  document.addEventListener('gitapitaker:inspect', (e) => inspectInput(e.detail?.input ?? ''));
+  document.addEventListener('gitapitaker:goto', (e) => { if (e.detail?.page) navigate(e.detail.page); });
 
   document.addEventListener('keydown', onGlobalKeydown);
 
@@ -495,6 +603,7 @@ function onGlobalKeydown(event) {
 
   if (event.key === '/') { event.preventDefault(); navigate('inspector'); focusInput(); return; }
   if (event.key === '?') { event.preventDefault(); help.open(); return; }
+  if (event.key === 't') { event.preventDefault(); cycleTheme(); return; }
   if (currentPage !== 'inspector') return;
 
   switch (event.key) {

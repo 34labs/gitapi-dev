@@ -82,5 +82,7 @@ export function unsupportedProviderError(url) {
     `Built-in providers: ${supported}.`,
     'Self-hosted Gitea, Forgejo or GitLab? Register the instance under Providers → Custom instances.',
     'Adding a new provider adapter is documented in the README (provider adapter architecture).',
+  ], [
+    { label: 'Register a self-hosted instance', goto: 'providers' },
   ]);
 }

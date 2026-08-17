@@ -4,9 +4,8 @@
 
 GitAPITaker is a privacy-first, keyboard-driven developer tool that resolves Git hosting URLs
 (`https://github.com/flessan`) into their provider REST API endpoints (`https://api.github.com/users/flessan`),
-performs the request **directly from your browser**, and shows you everything about the exchange:
-formatted JSON, the exact raw body, the response headers the provider returned, and the precise
-request GitAPITaker sent — with an honest LIVE / CACHED / STALE state on every response.
+performs the request **directly from your browser**, and shows you everything about the exchange —
+with an honest LIVE / CACHED / STALE state on every response.
 
 It is a **static frontend application**. There is no backend, no API proxy, no relay, no telemetry,
 no analytics and no application-owned database. It deploys to GitHub Pages as-is.
@@ -17,7 +16,36 @@ input URL → provider detection → URL parser → resource identification
          → response inspector
 ```
 
-Every stage is an independent, testable module.
+Every stage is an independent, testable module — and in v0.2 the UI shows them to you literally:
+the **resolution pipeline** (`DETECT → PARSE → RESOLVE → FETCH`) renders the actual outcome of each
+stage for every inspection, including which stage failed and why.
+
+## What's new in v0.2 (UI/UX redesign + new features)
+
+**Redesign — “lab instrument” identity.** A terminal-style command strip with prompt glyph, a
+two-pane inspector (metadata rail + response area), box-drawn section headings, mono-forward
+type, amber-on-charcoal palette (light theme supported), precise focus states, zero emoji,
+zero web fonts. The theme toggle (or <kbd>t</kbd) cycles auto/dark/light and persists locally.
+
+**Resolution pipeline tracker.** Every inspection renders its stages with real values:
+`detect: github.com → github · parse: user · login=flessan · resolve: GET api.github.com/users/flessan · fetch: LIVE 200 · 312 ms · 4.2 KB`.
+Failures mark the exact stage that broke; suppressed requests show the cache path instead of a
+fake fetch.
+
+**New features:**
+
+- **Pagination navigation** — GitAPITaker reads GitHub/Gitea `Link` headers and GitLab
+  `x-page/x-next-page/x-total` headers and offers honest Prev/Next page buttons (only what the
+  provider actually reported, never invented counts).
+- **JSON search & copy** — filter keys/values with auto-expanding highlights and a match counter;
+  click any key to copy its JSONPath (`$.nested.tags[0]`), click any value to copy it.
+- **Actionable interpretations** — e.g. a GitHub user 404 offers a one-click *“Try as
+  organization”* button; an unknown host offers a jump to instance registration.
+- **Change detection** — when a forced refresh replaces a cached response, GitAPITaker diffs the
+  two bodies and shows “changed since previous capture — N differences” with a jump to the diff.
+- **Metadata rail** — status, provider, duration/age, size, fetch time, source and the Request
+  Guard module in one glance, with Refresh/Diff/Share/cURL actions.
+- **Theme persistence** — auto/dark/light, stored locally like everything else.
 
 ---
 
@@ -75,6 +103,8 @@ src/
     share.js            shareable inspection URLs (instruction only, never response data)
     curl.js             Copy-as-cURL builder
     diff.js             structural JSON diff (pure, non-mutating)
+    pagination.js       provider-aware pagination signals (Link / x-* headers)
+    jsonsearch.js       pure JSON key/value matching with JSONPath results
     storage.js          localStorage wrapper with in-memory fallback
     format.js           bytes/duration/time formatting
   providers/
@@ -87,9 +117,10 @@ src/
     json.js raw.js headers.js request.js    the four inspector views
   ui/
     inspector.js explorer.js history-view.js cache-view.js providers-view.js
-    community.js palette.js help.js tabs.js router.js keyboard.js announce.js dom.js
+    community.js palette.js help.js tabs.js router.js keyboard.js announce.js
+    theme.js dom.js
   community/config.js   Giscus configuration (GitHub Discussions backend)
-tests/                  node:test suite (144 tests incl. a DOM boot test, mocked fetch)
+tests/                  node:test suite (167 tests incl. a DOM boot test, mocked fetch)
 tools/serve.mjs         dependency-free dev server
 .github/workflows/pages.yml   CI (tests on Node 20/22) + GitHub Pages deploy
 ```
@@ -111,7 +142,7 @@ Separation rules the codebase enforces:
 - **No telemetry.** No analytics, tracking pixels, behavioral tracking or request logging.
   The only third-party requests are (a) the provider API you ask to inspect and
   (b) the Giscus widget on the Community page, which talks to GitHub.
-- **Local-only state.** Cache, history, instances and settings live in `localStorage` and are
+- **Local-only state.** Cache, history, instances, theme and settings live in `localStorage` and are
   never transmitted. Clear them any time from the Cache/History pages.
 - **No credentials.** v0.1 performs unauthenticated requests with `credentials: "omit"`.
   Tokens are never placed in URLs, query strings, share links, history or cache records.
@@ -160,9 +191,17 @@ usual guard/cache rules. A top-level `?u=` query is also accepted.
 No dependencies, no build step. Requires Node ≥ 20 for tests.
 
 ```sh
+npm ci                    # dev dependencies only (happy-dom for the DOM boot test)
 node tools/serve.mjs      # serve the app at http://localhost:8080 (PORT env to change)
-npm test                  # run the node:test suite (144 tests, all mocked)
+npm test                  # run the node:test suite (167 tests, all mocked)
 ```
+
+## Keyboard reference
+
+`Ctrl/Cmd+K` palette · `/` focus input · `Enter` inspect · `1–4` JSON/RAW/HEADERS/REQUEST ·
+`r` force live request · `y` copy cURL · `s` share link · `d` diff · `t` cycle theme ·
+`?` help · `Esc` close. In the JSON view, the filter box searches keys/values (matches
+auto-expand), clicking a key copies its JSONPath, clicking a value copies the value.
 
 ## GitHub Pages deployment
 

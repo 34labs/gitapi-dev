@@ -30,12 +30,19 @@ export class ResolverError extends Error {
    * @param {string} code  One of ResolverErrorCode.
    * @param {string} message
    * @param {string[]} [hints]
+   * @param {Array<{label: string, input?: string, goto?: string}>} [quickActions]
    */
-  constructor(code, message, hints = []) {
+  constructor(code, message, hints = [], quickActions = []) {
     super(message);
     this.name = 'ResolverError';
     this.code = code;
     this.hints = hints;
+    /** Clickable follow-ups rendered by the UI (inspect `input` or navigate `goto`). */
+    this.quickActions = quickActions;
+    /** Pipeline stage where the failure occurred ('input'|'detect'|'parse'|'resolve'). */
+    this.stage = undefined;
+    /** Partial pipeline context collected before the failure. */
+    this.context = {};
   }
 }
 
@@ -101,14 +108,16 @@ export function interpretHttpStatus(status, providerId, headers = [], parsed = u
     case 404: {
       const causes = ['The resource does not exist at this endpoint.', 'The resource is private and hidden without authentication.'];
       const actions = ['Double-check the original URL and spelling.'];
+      const quickActions = [];
       if (providerId === 'github' && parsed?.resourceType === 'user') {
         causes.push(`"${parsed.params.login}" may be an organization rather than a user. GitHub keeps separate endpoints: /users/{login} and /orgs/{org}.`);
         actions.push(`Try the org endpoint: https://api.github.com/orgs/${parsed.params.login}`);
+        quickActions.push({ label: `Try as organization: /orgs/${parsed.params.login}`, input: `https://github.com/orgs/${parsed.params.login}` });
       }
       if (providerId === 'gitlab' && parsed?.resourceType === 'project') {
         causes.push('GitLab project lookups use the full URL-encoded namespace path; a moved or renamed project changes the path.');
       }
-      return { title: `HTTP 404: ${providerId} did not find this resource`, causes, actions };
+      return { title: `HTTP 404: ${providerId} did not find this resource`, causes, actions, quickActions };
     }
     case 409:
       return {

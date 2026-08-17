@@ -13,23 +13,68 @@ import { ResolverError, ResolverErrorCode } from './errors.js';
 /**
  * Resolve user input to a concrete API endpoint.
  *
+ * ResolverErrors thrown from here carry pipeline annotations:
+ * `err.stage` ('input'|'detect'|'parse'|'resolve') and `err.context`
+ * with whatever the pipeline had determined before failing — the UI
+ * uses these to render an honest stage-by-stage failure view.
+ *
  * @param {string} input
  * @param {{instances?: import('./types.js').InstanceConfig[]}} [opts]
  * @returns {{url: URL, provider: object, detection: object, parsed: import('./types.js').ParsedResource, endpoint: import('./types.js').ResolvedEndpoint}}
  * @throws {ResolverError}
  */
 export function resolveInput(input, opts = {}) {
-  const url = normalizeInput(input);
+  const truncated = String(input ?? '').trim().slice(0, 64) || '(empty)';
+
+  let url;
+  try {
+    url = normalizeInput(input);
+  } catch (err) {
+    if (err instanceof ResolverError) {
+      err.stage = 'input';
+      err.context = { input: truncated };
+    }
+    throw err;
+  }
+
   const instances = opts.instances ?? safeListInstances();
   const detection = detectProvider(url, instances);
-  if (!detection) throw unsupportedProviderError(url);
+  if (!detection) {
+    const err = unsupportedProviderError(url);
+    err.stage = 'detect';
+    err.context = { input: truncated, host: url.hostname };
+    throw err;
+  }
 
-  const parsed = detection.provider.parse(url, detection.ctx);
-  const endpoint = detection.provider.resolve(parsed, detection.ctx);
+  let parsed;
+  try {
+    parsed = detection.provider.parse(url, detection.ctx);
+  } catch (err) {
+    if (err instanceof ResolverError) {
+      err.stage = 'parse';
+      err.context = { input: truncated, host: url.hostname, providerId: detection.provider.id };
+    }
+    throw err;
+  }
+
+  let endpoint;
+  try {
+    endpoint = detection.provider.resolve(parsed, detection.ctx);
+  } catch (err) {
+    if (err instanceof ResolverError) {
+      err.stage = 'resolve';
+      err.context = { input: truncated, host: url.hostname, providerId: detection.provider.id, parsed };
+    }
+    throw err;
+  }
+
   if (!endpoint?.url || !endpoint.providerId || !endpoint.method) {
-    throw new ResolverError(ResolverErrorCode.MISSING_INFO, 'Provider adapter produced an incomplete endpoint.', [
+    const err = new ResolverError(ResolverErrorCode.MISSING_INFO, 'Provider adapter produced an incomplete endpoint.', [
       'This is a GitAPITaker bug — please report it with the URL you used.',
     ]);
+    err.stage = 'resolve';
+    err.context = { input: truncated, host: url.hostname, providerId: detection.provider.id, parsed };
+    throw err;
   }
   return { url, provider: detection.provider, detection, parsed, endpoint };
 }

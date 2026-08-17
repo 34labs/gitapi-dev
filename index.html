@@ -16,6 +16,7 @@
     <a class="brand" href="#/">
       <span class="brand-mark" aria-hidden="true">{}</span>
       <span class="brand-name">GitAPITaker</span>
+      <span class="brand-sub mono" aria-hidden="true">v0.2</span>
     </a>
     <nav class="site-nav" aria-label="Main">
       <a href="#/">Inspector</a>
@@ -25,48 +26,57 @@
       <a href="#/community">Community</a>
       <a href="#/about">About/Security</a>
     </nav>
-    <button type="button" id="palette-open" class="btn btn-ghost palette-trigger" aria-label="Open command palette">
-      <kbd>Ctrl</kbd><kbd>K</kbd>
-    </button>
+    <div class="header-tools">
+      <button type="button" id="theme-toggle" class="btn btn-ghost btn-sm theme-toggle mono" aria-label="Cycle color theme (auto, dark, light)">theme: auto</button>
+      <button type="button" id="palette-open" class="btn btn-ghost palette-trigger" aria-label="Open command palette">
+        <kbd>Ctrl</kbd><kbd>K</kbd>
+      </button>
+    </div>
   </header>
 
   <main id="main">
 
     <!-- ============================ Inspector ============================ -->
     <section id="page-inspector" aria-labelledby="inspector-title">
-      <header class="page-head">
+      <header class="command-strip">
         <h1 id="inspector-title" tabindex="-1">Inspector</h1>
         <p class="tagline">Take a Git hosting URL. Inspect the API behind it.</p>
-        <p class="view-note">Requests go directly from your browser to the provider API. No proxy, no backend, no tracking.</p>
+        <form id="inspect-form" class="inspect-form" autocomplete="off">
+          <label for="url-input" class="sr-only">Git hosting URL</label>
+          <div class="prompt-row">
+            <span class="prompt-glyph mono" aria-hidden="true">&gt;</span>
+            <input id="url-input" class="input mono" type="text" inputmode="url" spellcheck="false"
+                   placeholder="https://github.com/flessan — or github.com/flessan, or a GitLab/Gitea URL"
+                   aria-describedby="input-help">
+            <button type="submit" class="btn btn-primary" id="inspect-btn">Inspect</button>
+          </div>
+          <p id="input-help" class="view-note">Full URLs, shorthand hosts and git@ SSH remotes accepted · Enter inspects · / focuses this field</p>
+          <div id="examples" class="examples" role="group" aria-label="Example URLs"></div>
+        </form>
       </header>
 
-      <form id="inspect-form" class="inspect-form" autocomplete="off">
-        <label for="url-input" class="field-label">Git hosting URL</label>
-        <div class="input-row">
-          <input id="url-input" class="input mono" type="text" inputmode="url" spellcheck="false"
-                 placeholder="https://github.com/flessan — or github.com/flessan, or a GitLab/Gitea URL"
-                 aria-describedby="input-help">
-          <button type="submit" class="btn btn-primary" id="inspect-btn">Inspect</button>
-        </div>
-        <p id="input-help" class="view-note">Full URLs, shorthand hosts and git@ SSH remotes are accepted. Enter inspects.</p>
-        <div id="examples" class="examples" role="group" aria-label="Example URLs"></div>
-      </form>
+      <div id="pipeline" class="pipeline" role="status" aria-label="Resolution pipeline" hidden></div>
 
       <div id="empty-state" class="empty-state" hidden>
         <p class="kaomoji" aria-hidden="true">(・_・;)</p>
-        <p>Nothing inspected yet.</p>
-        <p class="view-note">Paste a Git hosting URL above, or press an example chip. The resolved API endpoint, the real provider response, its headers and the exact request will appear here.</p>
+        <p class="empty-title mono">NO INSPECTIONS YET</p>
+        <p class="view-note">Paste a Git hosting URL above, or press an example chip. The resolution pipeline, the real provider response, its headers and the exact request will appear here — every stage visible, nothing faked.</p>
       </div>
 
       <div id="resolver-error" class="error-panel" role="alert" hidden></div>
 
       <section id="result-area" aria-label="Inspection result" hidden>
-        <p id="pending-note" class="pending-note mono" hidden>Contacting the provider directly from your browser…</p>
-        <div id="status-bar" class="status-bar" role="status" aria-label="Request and response status"></div>
-        <p id="guard-note" class="guard-note" role="note" hidden></p>
-        <div id="interp-banner" hidden></div>
-        <div id="response-tabs"></div>
-        <section id="explorer-area" aria-label="Endpoint Explorer" hidden></section>
+        <div class="inspector-grid">
+          <aside id="status-bar" class="meta-rail" aria-label="Request and response status"></aside>
+          <div class="response-main">
+            <p id="pending-note" class="pending-note mono" hidden>Contacting the provider directly from your browser…</p>
+            <div id="interp-banner" hidden></div>
+            <div id="change-note" class="change-note" role="status" hidden></div>
+            <div id="pagination-bar" class="pagination-bar" hidden></div>
+            <div id="response-tabs"></div>
+            <section id="explorer-area" aria-label="Endpoint Explorer" hidden></section>
+          </div>
+        </div>
       </section>
     </section>
 
@@ -105,7 +115,7 @@
       <div id="provider-cards" class="provider-cards"></div>
       <section id="instance-manager" aria-label="Custom instances"></section>
       <section aria-labelledby="add-provider-title">
-        <h2 id="add-provider-title">Adding another provider</h2>
+        <h2 id="add-provider-title" class="section-title">Adding another provider</h2>
         <p>New providers are added as self-contained adapters: one module in <code class="mono">src/providers/</code>
         implementing host matching, URL parsing, endpoint resolution and related-resource metadata, registered in
         <code class="mono">src/providers/registry.js</code>. The full walkthrough — including Forgejo and Bitbucket
@@ -140,7 +150,8 @@
         <h2>What GitAPITaker is</h2>
         <p>A privacy-first, keyboard-driven developer tool that resolves Git hosting URLs into their provider REST API
         endpoints and lets you inspect the resulting responses — JSON, RAW body, headers and the exact request — with
-        total transparency about what is live and what is cached.</p>
+        total transparency about what is live and what is cached. The resolution pipeline at the top of every
+        inspection shows exactly what was detected, parsed, resolved and fetched.</p>
 
         <h2>Architecture</h2>
         <ul>
@@ -151,8 +162,8 @@
 
         <h2>Privacy</h2>
         <ul>
-          <li>No analytics, no telemetry, no tracking pixels, no third-party behavioral tracking, no request-logging servers.</li>
-          <li>The URLs you inspect, your history and your cache are stored only in this browser’s localStorage. GitAPITaker never transmits them anywhere.</li>
+          <li>No analytics, no telemetry, no tracking pixels, no third-party behavioral tracking, no request-logging servers. No web fonts are loaded — system font stacks only.</li>
+          <li>The URLs you inspect, your history, your cache and your theme preference are stored only in this browser’s localStorage. GitAPITaker never transmits them anywhere.</li>
           <li>Share links contain only the target resource URL — never responses, tokens or cache data.</li>
           <li>Requests use <code class="mono">credentials: "omit"</code>: no cookies are sent to provider APIs.</li>
           <li>The community widget (Giscus) is loaded only on the Community page and communicates with GitHub, not with GitAPITaker infrastructure.</li>
@@ -170,8 +181,9 @@
         <h2>Request Guard</h2>
         <p>The Request Guard is a local safety mechanism: after a live request, repeated identical requests within
         10 seconds are suppressed and served from the local cache. The UI tells you when this happens — how many
-        repeats were suppressed and when a live request is allowed again. It exists to keep the interface responsive
-        and to protect third-party APIs from accidental hammering. <strong>It is not designed to bypass provider rate
+        repeats were suppressed this session, and when a live request is allowed again. <code class="mono">r</code>
+        (or the Refresh button) forces a live request. It exists to keep the interface responsive and to protect
+        third-party APIs from accidental hammering. <strong>It is not designed to bypass provider rate
         limits</strong>, and GitAPITaker never rotates identities, proxies requests, or otherwise circumvents provider
         protections. Provider rate limits still fully apply to every live request.</p>
 
@@ -187,7 +199,7 @@
 
         <h2>Known limitations</h2>
         <ul>
-          <li>github.com/{name} is ambiguous (user vs organization); the users endpoint is tried first and the 404 interpretation suggests the org endpoint.</li>
+          <li>github.com/{name} is ambiguous (user vs organization); the users endpoint is tried first and the 404 interpretation offers a one-click “try as organization” action.</li>
           <li>GitLab user lookup returns an array (<code class="mono">/users?username=</code>); related resources for a single GitLab user need the numeric id from that response.</li>
           <li>tree/blob URLs mix a git ref and a path; the first segment is treated as the ref (heuristic, labeled in the REQUEST view).</li>
           <li>Browsers only expose response headers allowed by CORS; the HEADERS view says so explicitly.</li>
@@ -199,7 +211,7 @@
   </main>
 
   <footer class="site-footer">
-    <p class="mono">GitAPITaker — direct browser-to-provider requests · localStorage cache · no proxy · no telemetry</p>
+    <p class="mono">GitAPITaker — direct browser-to-provider requests · localStorage cache · no proxy · no telemetry · no web fonts</p>
     <p class="view-note">Providers: <a href="https://docs.github.com/en/rest" target="_blank" rel="noopener noreferrer">GitHub REST</a> ·
       <a href="https://docs.gitlab.com/api/rest/" target="_blank" rel="noopener noreferrer">GitLab REST</a> ·
       <a href="https://docs.gitea.com/api/" target="_blank" rel="noopener noreferrer">Gitea</a></p>
@@ -217,7 +229,7 @@
              aria-label="Command palette filter">
       <div id="palette-list" class="palette-list" role="listbox" aria-label="Commands"></div>
       <p id="palette-empty" class="empty-note" hidden>No matching commands.</p>
-      <p class="view-note palette-foot">Arrow keys to move · Enter to run · Esc to close</p>
+      <p class="view-note palette-foot">↑/↓ to move · Enter to run · Esc to close</p>
     </div>
   </dialog>
 
@@ -238,13 +250,14 @@
           <tr><th scope="row"><kbd>y</kbd></th><td>Copy as cURL</td></tr>
           <tr><th scope="row"><kbd>s</kbd></th><td>Copy share link</td></tr>
           <tr><th scope="row"><kbd>d</kbd></th><td>Response diff against an older snapshot</td></tr>
+          <tr><th scope="row"><kbd>t</kbd></th><td>Cycle color theme (auto / dark / light)</td></tr>
           <tr><th scope="row"><kbd>?</kbd></th><td>This help dialog</td></tr>
           <tr><th scope="row"><kbd>Esc</kbd></th><td>Close dialogs / palette</td></tr>
           <tr><th scope="row"><kbd>↑</kbd>/<kbd>↓</kbd></th><td>Navigate lists, palette and explorer</td></tr>
           <tr><th scope="row"><kbd>←</kbd>/<kbd>→</kbd></th><td>Switch response tabs (focus on tablist)</td></tr>
         </tbody>
       </table>
-      <p class="view-note">Shortcuts are ignored while typing in an input field, and never trap focus.</p>
+      <p class="view-note">In the JSON view: type in the filter box to search keys and values (matches auto-expand); click a key to copy its path, click a value to copy it. Shortcuts are ignored while typing and never trap focus.</p>
     </div>
   </dialog>
 

@@ -53,10 +53,11 @@ test('boot: app renders the empty state on first load', async () => {
   await sleep(60);
   assert.equal(document.getElementById('empty-state').hidden, false);
   assert.equal(document.getElementById('result-area').hidden, true);
+  assert.equal(document.getElementById('pipeline').hidden, true, 'pipeline hidden before any inspection');
   assert.equal(fetchMock.calls.length, 0, 'no request happens before the user acts');
 });
 
-test('inspect: GitHub user URL renders a LIVE result with all four tabs', async () => {
+test('inspect: GitHub user URL renders pipeline, LIVE rail and all four tabs', async () => {
   document.getElementById('url-input').value = 'https://github.com/flessan';
   submitForm();
   await sleep(120);
@@ -65,12 +66,22 @@ test('inspect: GitHub user URL renders a LIVE result with all four tabs', async 
   assert.ok(fetchMock.calls[0].url.startsWith('https://api.github.com/users/flessan'));
   assert.equal(fetchMock.calls[0].init.credentials, 'omit', 'credentials never sent');
 
-  assert.equal(document.getElementById('result-area').hidden, false);
-  const status = document.getElementById('status-bar').textContent;
-  assert.ok(status.includes('api.github.com/users/flessan'), `status bar shows endpoint, got: ${status}`);
-  assert.ok(status.includes('LIVE'), `LIVE badge shown, got: ${status}`);
-  assert.ok(status.includes('200'), 'status 200 shown');
+  // Pipeline shows every stage with real values.
+  const pipeline = document.getElementById('pipeline');
+  assert.equal(pipeline.hidden, false);
+  const pipeText = pipeline.textContent;
+  assert.ok(pipeText.includes('detect'), `pipeline has detect stage: ${pipeText}`);
+  assert.ok(pipeText.includes('github.com → github'), 'detect stage names host and adapter');
+  assert.ok(pipeText.includes('user'), 'parse stage names the resource type');
+  assert.ok(pipeText.includes('api.github.com/users/flessan'), 'resolve stage shows the endpoint');
+  assert.ok(pipeText.includes('LIVE 200'), 'fetch stage reports live status');
 
+  // Metadata rail carries the honest state.
+  const rail = document.getElementById('status-bar').textContent;
+  assert.ok(rail.includes('LIVE'), `LIVE badge shown: ${rail}`);
+  assert.ok(rail.includes('200'), 'status 200 shown');
+
+  assert.equal(document.getElementById('result-area').hidden, false);
   for (const id of ['tab-json', 'tab-raw', 'tab-headers', 'tab-request']) {
     assert.ok(document.getElementById(id), `${id} exists`);
   }
@@ -97,6 +108,26 @@ test('inspect: GitHub user URL renders a LIVE result with all four tabs', async 
   const explorer = document.getElementById('explorer-area');
   assert.equal(explorer.hidden, false, 'explorer visible for a user resource');
   assert.ok(explorer.textContent.includes('Repositories of flessan'));
+
+  // Single-object response has no pagination.
+  assert.equal(document.getElementById('pagination-bar').hidden, true);
+});
+
+test('JSON view: search filters and reports matches', async () => {
+  document.getElementById('tab-json').click();
+  await sleep(20);
+  const search = document.querySelector('.json-search');
+  assert.ok(search, 'JSON search input exists');
+  search.value = 'public_repos';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  await sleep(300); // debounce
+  const info = document.querySelector('.json-match-info').textContent;
+  assert.ok(/1 match/.test(info), `expected 1 match, got: ${info}`);
+  const hit = document.querySelector('.j-hit, .json-leaf-hit');
+  assert.ok(hit, 'a match is highlighted');
+  search.value = '';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  await sleep(300);
 });
 
 test('cache + history: records are stored locally', async () => {
@@ -117,8 +148,8 @@ test('guard: an immediate repeat is suppressed and labeled CACHED, not LIVE', as
   await sleep(120);
   assert.equal(fetchMock.calls.length, 1, 'second request suppressed by the Request Guard');
 
-  const status = document.getElementById('status-bar').textContent;
-  assert.ok(status.includes('CACHED'), `CACHED badge shown, got: ${status}`);
+  const rail = document.getElementById('status-bar').textContent;
+  assert.ok(rail.includes('CACHED'), `CACHED badge shown: ${rail}`);
   const guardNote = document.getElementById('guard-note');
   assert.equal(guardNote.hidden, false, 'guard note visible');
   assert.ok(guardNote.textContent.includes('Request Guard'));
@@ -135,7 +166,19 @@ test('keyboard: number keys switch response tabs', async () => {
   assert.equal(document.getElementById('panel-headers').hidden, false);
 });
 
-test('resolver: unsupported host shows an error and sends nothing', async () => {
+test('theme: toggle cycles auto -> dark -> light and persists', async () => {
+  const btn = document.getElementById('theme-toggle');
+  assert.ok(btn, 'theme toggle exists');
+  btn.click();
+  assert.equal(document.documentElement.dataset.theme, 'dark');
+  btn.click();
+  assert.equal(document.documentElement.dataset.theme, 'light');
+  btn.click();
+  assert.equal(document.documentElement.dataset.theme, undefined, 'auto removes the override');
+  assert.equal(window.localStorage.getItem('gitapitaker.theme.v1'), '"auto"');
+});
+
+test('resolver: unsupported host shows staged failure and sends nothing', async () => {
   document.getElementById('url-input').value = 'https://unknown.example.com/some/repo';
   submitForm();
   await sleep(60);
@@ -143,9 +186,14 @@ test('resolver: unsupported host shows an error and sends nothing', async () => 
   const box = document.getElementById('resolver-error');
   assert.equal(box.hidden, false);
   assert.ok(box.textContent.includes('unsupported-provider'));
+  assert.ok(box.textContent.includes('stage: detect'), 'failure names the failed pipeline stage');
   assert.ok(box.textContent.includes('No request was sent'));
+  assert.ok(box.textContent.includes('Register a self-hosted instance'), 'quick action offered');
   assert.equal(document.getElementById('result-area').hidden, true);
   assert.equal(fetchMock.calls.length, 1, 'still only the one earlier live request');
+
+  const pipeText = document.getElementById('pipeline').textContent;
+  assert.ok(pipeText.includes('no adapter'), 'pipeline marks the failed detect stage');
 });
 
 test('recovery: inspecting a valid URL after an error works (served from cache within cooldown)', async () => {
@@ -155,8 +203,8 @@ test('recovery: inspecting a valid URL after an error works (served from cache w
 
   assert.equal(document.getElementById('resolver-error').hidden, true);
   assert.equal(document.getElementById('result-area').hidden, false);
-  const status = document.getElementById('status-bar').textContent;
-  assert.ok(status.includes('CACHED'), `within guard cooldown the cached copy is served, got: ${status}`);
+  const rail = document.getElementById('status-bar').textContent;
+  assert.ok(rail.includes('CACHED'), `within guard cooldown the cached copy is served: ${rail}`);
 });
 
 test('share URLs encode only the instruction, never the response', async () => {
